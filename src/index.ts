@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { connectDB } from './config/db';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,6 +18,11 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server now running on port ${PORT}`);
-});
+const startServer = async (): Promise<void> => {
+  await connectDB();
+  app.listen(PORT, () => {
+    console.log(`Server now running on port ${PORT}`);
+  });
+};
+
+startServer();
