@@ -14,3 +14,7 @@ npm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Project documentation (local only)
+docs/
+EXAMPLES/
