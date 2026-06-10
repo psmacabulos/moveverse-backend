@@ -531,6 +531,14 @@ Useful for hotfixes: fix on the correct branch, cherry-pick to wherever else it 
 
 ---
 
+## Lesson 48 — .gitignore — what it does
+
+Files and folders listed in `.gitignore` are completely invisible to git. They are not tracked, staged, or committed. This is correct for secrets (`.env`), build output (`dist/`), and large installed packages (`node_modules/`).
+
+Documentation, however, should always be committed — it is part of the project. Never put `docs/` in `.gitignore`.
+
+---
+
 ## Lesson 49 — Empty commit to retrigger deployment
 
 GitHub Actions only fires on a new push. If you need to retrigger a deployment without making a real code change (e.g. after fixing a Config Var in Heroku), use an empty commit:
@@ -553,11 +561,3 @@ SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
 ```
 
 This always means an environment variable is missing or empty. Check all five DB Config Vars in the Heroku dashboard: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`.
-
----
-
-## Lesson 48 — .gitignore — what it does
-
-Files and folders listed in `.gitignore` are completely invisible to git. They are not tracked, staged, or committed. This is correct for secrets (`.env`), build output (`dist/`), and large installed packages (`node_modules/`).
-
-Documentation, however, should always be committed — it is part of the project. Never put `docs/` in `.gitignore`.

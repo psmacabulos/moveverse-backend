@@ -5,19 +5,15 @@ This is a living document — update it as the project evolves.
 
 ---
 
-## 🎯 This Week's Target — Monday 9 June 2026
+## 🎯 Current Target — Phase 7a Auth
 
-User registration and login must be working end-to-end by Monday.
-That means Phases 2 through 7a must all be complete.
+Phases 1–6 and Heroku deployment are complete. Auth (Phase 7a) is now the active focus.
 
 ```
-Tue 3 Jun  →  Finish entry point (src/index.ts)
-Wed 4 Jun  →  Docker + early Railway deployment
-Thu 5 Jun  →  Database connection + schema migrations
-Fri 6 Jun  →  Seed data + auth model + auth service
-Sat 7 Jun  →  Auth controller + routes + test registration end-to-end
-Sun 8 Jun  →  Google OAuth (Phase 7b) or buffer day
-Mon 9 Jun  →  ✅ Registration & login working
+Phases 1–6   ✅ Done     Setup, server, Docker, CI/CD, database, seed data
+Heroku       ✅ Live     App deployed, migrations ran, database seeded
+Phase 7a     🔨 Active   Email + password auth — model, service, controller, routes, middleware
+Phase 7b     ⏳ Next      Google OAuth
 ```
 
 ---
@@ -63,17 +59,17 @@ After Phase 12 →  Level 4: + full test suite on PR to main
 
 ---
 
-## 📊 Progress Overview
+## 📊 Progress Overview — 46% complete (6 of 13 phases done)
 
 ```
 Phase 1  ████████████████████  ✅ Done          Setup & Tooling
 Phase 2  ████████████████████  ✅ Done          Entry Point & Server
 Phase 3  ████████████████████  ✅ Done          Docker
-─────────────────────────────── 🚀 Deploy to Heroku (pending credits)
+─────────────────────────────── 🚀 Deployed to Heroku ✅ Live
 Phase 4  ████████████████████  ✅ Done          Database Connection
 Phase 5  ████████████████████  ✅ Done          Schema & Migrations
 Phase 6  ████████████████████  ✅ Done          Seed Data
-Phase 7  ░░░░░░░░░░░░░░░░░░░░  ⏳ Up Next        Authentication  ← 🎯 Monday target
+Phase 7  ░░░░░░░░░░░░░░░░░░░░  🔨 In Progress   Authentication  ← active
 Phase 8  ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Exercises Endpoint
 Phase 9  ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Workout Sessions
 Phase 10 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Achievement System
@@ -163,19 +159,19 @@ Do not wait until the project is finished to deploy. Deploy now with just the `/
 
 See `docs/cicd-procedure.md` for the full step-by-step setup.
 
-- [ ] Create Heroku app via the GitHub Student Developer Pack
-- [ ] Add Heroku Postgres (Mini plan) as an add-on
-- [ ] Add `engines` field to `package.json`
-- [ ] Create `Procfile` in project root
-- [ ] Add `HEROKU_API_KEY` to GitHub Secrets
-- [ ] Add deploy job to `ci.yml` (runs only on push to `main`, needs CI to pass)
-- [ ] Set all config vars in Heroku dashboard
-- [ ] Verify: push to `main` → Heroku deploys → `GET https://moveverse-backend.herokuapp.com/health` responds
+- [x] Create Heroku app via the GitHub Student Developer Pack
+- [x] Add Heroku Postgres (Mini plan) as an add-on
+- [x] Add `engines` field to `package.json`
+- [x] Create `Procfile` in project root (`release: npm run migrate:prod`, `web: npm start`)
+- [x] Add `HEROKU_API_KEY` to GitHub Secrets
+- [x] Add deploy job to `ci.yml` (runs only on push to `main`, needs CI to pass)
+- [x] Set all config vars in Heroku dashboard
+- [x] Verify: push to `main` → Heroku deploys → `GET https://moveverse-backend.herokuapp.com/health` responds
 
 ```
 From this point on, the workflow is:
 
-  feature branch  →  PR to dev  →  PR to main  →  Railway auto-deploys
+  feature branch  →  PR to dev  →  PR to main  →  Heroku auto-deploys
                                         ↑
                                    CI must pass
 ```
