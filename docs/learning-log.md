@@ -522,6 +522,31 @@ Useful for hotfixes: fix on the correct branch, cherry-pick to wherever else it 
 
 ---
 
+## Lesson 49 — Empty commit to retrigger deployment
+
+GitHub Actions only fires on a new push. If you need to retrigger a deployment without making a real code change (e.g. after fixing a Config Var in Heroku), use an empty commit:
+
+```
+git commit --allow-empty -m "chore: retrigger deployment"
+git push origin main
+```
+
+`--allow-empty` allows a commit with no staged changes. The push triggers the workflow as normal.
+
+---
+
+## Lesson 50 — SASL error: DB password must be a string
+
+If a pg Pool config receives `undefined` for any field (because a Config Var was not set in Heroku), the connection fails with a cryptic SASL error rather than a clear "missing variable" message.
+
+```
+SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
+```
+
+This always means an environment variable is missing or empty. Check all five DB Config Vars in the Heroku dashboard: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`.
+
+---
+
 ## Lesson 48 — .gitignore — what it does
 
 Files and folders listed in `.gitignore` are completely invisible to git. They are not tracked, staged, or committed. This is correct for secrets (`.env`), build output (`dist/`), and large installed packages (`node_modules/`).
