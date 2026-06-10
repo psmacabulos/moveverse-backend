@@ -4,6 +4,50 @@ A personal record of concepts learned while building this project. Written for f
 
 ---
 
+## Lesson 0 — The layered architecture (the map of the whole backend)
+
+Every feature in this backend is built from the same four layers. A request enters at the top, travels down, and the response travels back up:
+
+```
+            Client (browser / mobile app)
+                 │  HTTP request
+                 ▼
+routes       maps URL + method to a controller function
+                 ▼
+controller   handles HTTP — reads req, calls service, sends res
+                 ▼
+service      business logic — decisions, rules, calculations
+                 ▼
+model        SQL queries only — the only layer that touches the DB
+                 ▼
+            PostgreSQL
+                 │  rows come back
+                 ▼
+            response travels back up: model → service → controller → res.json()
+```
+
+Each layer knows ONE thing and is ignorant of the rest:
+
+| Layer      | Its only job                                  | Must NOT do          |
+| ---------- | --------------------------------------------- | -------------------- |
+| routes     | "POST /api/v1/auth/register → handleRegister" | Any logic            |
+| controller | Unpack req, call service, pick status code    | SQL, business rules  |
+| service    | Decisions: "is this email taken? hash this"   | SQL, touch req/res   |
+| model      | Run parameterised SQL, return rows            | Logic, HTTP          |
+
+**The request/response cycle** for one call:
+
+1. Express receives the HTTP request, global middleware runs first (helmet, cors, json parser)
+2. The route file matches the URL and method, and hands off to a controller
+3. The controller pulls what it needs out of `req.body` / `req.params` and calls a service function with plain values — no `req` or `res` ever goes deeper than the controller
+4. The service makes the decisions and calls model functions when it needs data
+5. The model runs SQL through the shared pool and returns rows
+6. The result bubbles back up; the controller turns it into a status code + JSON and calls `res.json()` — the cycle ends with exactly one response per request
+
+**Why bother with layers?** Change isolation (swap how login works without touching SQL), testability (test business logic without HTTP or a database), and repetition (every phase from auth to leaderboard is the same four files with different nouns — learn the shape once, repeat it everywhere).
+
+---
+
 ## Lesson 1 — What Node.js actually is
 
 Node.js is not a language. It is a runtime — it takes JavaScript (which normally only runs in a browser) and lets it run on a server. When you run `node index.js`, Node executes that file on your machine, not in a browser.
@@ -561,3 +605,58 @@ SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
 ```
 
 This always means an environment variable is missing or empty. Check all five DB Config Vars in the Heroku dashboard: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`.
+
+---
+
+## Lesson 51 — What auth is really for: "who is asking?"
+
+Phase 7a is not really about register and login. It is about giving the API the ability to answer one question on every request: **who is asking?** Almost every later feature depends on it — workouts are saved for *the current user*, achievements unlock for *the current user*, "my profile" needs to know who "my" is. Auth is built first because everything else stands on it.
+
+Critically, the user's identity comes from the verified token — never from the request body. If the client could just send `user_id` in the body, anyone could submit workouts as anyone else.
+
+---
+
+## Lesson 52 — HTTP is stateless
+
+Every HTTP request arrives at the server as a total stranger. The server does not remember that this person logged in two minutes ago — and the Heroku dyno could restart between two requests, wiping any in-memory state.
+
+So a client must prove who it is on **every request**. Two classic solutions:
+
+| Approach | How it works                                                                  |
+| -------- | ----------------------------------------------------------------------------- |
+| Sessions | Server stores "token abc123 = user 42" in a table, looks it up on every request |
+| JWT      | Server hands the client a **signed note** at login; the note itself says who the user is |
+
+MoveVerse uses JWTs — no session storage or lookup needed, which suits a stateless deployment. The trade-off: a JWT cannot easily be revoked before it expires, which is why tokens get expiry times.
+
+---
+
+## Lesson 53 — What a JWT actually is
+
+A JWT is a signed note with three parts: `header.payload.signature`.
+
+- **Payload** — carries the user's id. It is only base64-encoded, NOT encrypted — anyone can read it, so never put secrets in it.
+- **Signature** — created with the server's `JWT_SECRET`. If anyone edits the payload to claim a different user id, the signature stops matching and verification fails.
+- **The secret never leaves the server** — `.env` locally, Config Var on Heroku. The secret is the only thing that makes the scheme trustworthy.
+
+So the server doesn't need to *remember* issuing the token. It just checks the signature: "did I sign this, and is it untampered?"
+
+---
+
+## Lesson 54 — The three capabilities of Phase 7a
+
+1. **Register** — turn a stranger into a stored user. Never store the password; store the bcrypt hash (one-way fingerprint). Even a leaked database gives attackers no passwords.
+2. **Login** — a returning user proves who they are. Find the stored hash, `bcrypt.compare()` the input against it. Nothing is ever decrypted — hashes can't be reversed, only re-computed and compared. Success → sign and return a JWT.
+3. **The gate (`requireAuth` middleware)** — the real product of the phase. Runs before any protected route: read `Authorization: Bearer <token>`, verify the signature, attach the user to `req.user`, call `next()`. Written once, then every protected route in phases 8–12 just bolts it on.
+
+---
+
+## Lesson 55 — Why we build bottom-up (model first)
+
+Build order: model → service → controller → routes → middleware. Each layer **calls** the one below it. Writing the controller first means calling service functions that don't exist yet — coding against imaginary code. Bottom-up means at every step, the thing you depend on already exists and works. The middleware comes last because it can't verify tokens until login can issue them.
+
+---
+
+## Lesson 56 — Login errors should not leak which field was wrong
+
+Wrong email and wrong password must return the **same** error ("Invalid credentials", 401). If "email not found" and "wrong password" are different messages, an attacker can probe which emails are registered (user enumeration). The service knows the difference; the response must not show it.
