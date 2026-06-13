@@ -1172,3 +1172,178 @@ return { token, user: safeUser }
 | Object literal (a real value) | JavaScript (runtime) | `,` comma |
 
 An inline type like `{ token: string; user: SafeUser }` is just an anonymous interface — TypeScript's type syntax, same rules as a named `interface {}` block. Seeing semicolons inside `{}` means "I'm describing a shape." Seeing commas means "I'm building a real object."
+
+---
+
+## Lesson 81 — res.json() and how data flows from model to browser
+
+`res.status(201).json(result)` does three things: sets `Content-Type: application/json`, calls `JSON.stringify()` on the argument, and sends it as the HTTP response body. Whatever JS object you pass in is exactly what the frontend receives as JSON.
+
+The data shape is decided at the **model** (which columns RETURNING/SELECT lists) and flows upward unchanged:
+
+```
+PostgreSQL row  →  model returns SafeUser
+                →  service wraps it: { token, user: SafeUser }
+                →  controller: res.json(result)
+                →  browser receives: { "token": "...", "user": { ... } }
+```
+
+The controller is a **thin pass-through** — it does not reshape, filter, or make decisions about data. If you find yourself transforming data inside a controller, that logic belongs in the service.
+
+The controller's only real decisions:
+
+| Situation | Status | Why |
+| --- | --- | --- |
+| Register success | `201 Created` | a new resource was created |
+| Login success | `200 OK` | no new resource — just authentication |
+| AppError thrown | `error.statusCode` | service already decided (409, 401...) |
+| Unknown error | `500` | something broke unexpectedly |
+
+`200` vs `201` is the one place the controller actually thinks. Everything else is mechanical pass-through or error translation.
+
+---
+
+## Lesson 82 — res.status() vs res.statusCode
+
+Both set the HTTP status code — the difference is chaining:
+
+```typescript
+res.status(201).json(result)   // Express method — returns res, enables chaining
+res.statusCode = 201;          // Node.js property — assignment, no chaining, two lines
+res.json(result);
+```
+
+`res.status()` is an Express convenience method that sets the code and returns `res` so `.json()` can be called immediately. `res.statusCode` is the raw Node.js `http.ServerResponse` property Express inherits — it works but feels below the Express layer.
+
+Both produce identical HTTP responses. Use `res.status()` — it's the universal Express convention and chains cleanly. `res.statusCode` is the right answer only if you're writing raw Node.js without Express.
+
+---
+
+## Lesson 83 — The anatomy of an HTTP request (what the frontend sends)
+
+Every HTTP request is a structured package with five parts. Express unpacks each one into a named property on `req`:
+
+```
+POST /api/v1/auth/register HTTP/1.1
+Host: localhost:3000
+Content-Type: application/json
+Authorization: Bearer eyJhbGc...
+
+{ "username": "kath", "email": "kath@x.com", "password": "secret123" }
+```
+
+**1. Method** — the intent of the request. Express routes filter on this first.
+
+| Method | Meaning | Example |
+| --- | --- | --- |
+| `GET` | Read data, no body | fetch exercises list |
+| `POST` | Create something, has a body | register, login, save workout |
+| `PUT` | Replace something fully, has a body | update profile |
+| `PATCH` | Partially update, has a body | change just the username |
+| `DELETE` | Remove something | delete account |
+
+**2. URL / path** — where the request is going. Breaks into two sub-parts Express separates for you:
+
+```
+/api/v1/users/abc-123?sort=desc
+         └─────────┘ └────────┘
+         req.params  req.query
+```
+
+- `req.params` — named segments declared in the route definition (`:id`): `router.get('/users/:id')` → `req.params.id === 'abc-123'`
+- `req.query` — everything after the `?` as key/value pairs: `req.query.sort === 'desc'`
+
+**3. Headers** — metadata about the request, not the data itself. Accessed via `req.headers`:
+
+| Header | What it carries | Where you'll use it |
+| --- | --- | --- |
+| `Content-Type: application/json` | "my body is JSON" | `express.json()` middleware reads this to decide whether to parse |
+| `Authorization: Bearer <token>` | the JWT | `requireAuth` middleware reads `req.headers.authorization` |
+| `Host` | which domain was requested | rarely touched in app code |
+
+The `Authorization` header is the one you'll access most:
+```typescript
+const authHeader = req.headers.authorization;
+// "Bearer eyJhbGciOiJIUzI1NiJ9..."
+const token = authHeader?.split(' ')[1];
+// "eyJhbGciOiJIUzI1NiJ9..."
+```
+
+**4. Body** — the data payload. Only present on POST/PUT/PATCH. Accessed via `req.body`.
+
+Without `express.json()` middleware, `req.body` is `undefined` — the middleware reads the raw bytes, parses them as JSON, and puts the result on `req.body`. This is why middleware order matters (Lesson 8): `express.json()` must run before any route that reads `req.body`.
+
+```typescript
+const { username, email, password } = req.body;
+```
+
+Always destructure explicitly — never pass `req.body` directly into a service (Lesson 81).
+
+**5. req.user** — not part of the HTTP standard. This is a custom property your `requireAuth` middleware *attaches* after verifying the JWT. Downstream route handlers read it as if it arrived with the request. This is the mechanism that makes "who is asking?" available everywhere on protected routes.
+
+---
+
+## Lesson 84 — The anatomy of an HTTP response (what we send back)
+
+Every response has three parts: a status code, headers, and a body.
+
+**Status codes — the most important ones for this project:**
+
+| Code | Name | When to use |
+| --- | --- | --- |
+| `200` | OK | Successful read or login — data returned |
+| `201` | Created | Something new was created (register, save workout) |
+| `400` | Bad Request | Client sent malformed/missing data |
+| `401` | Unauthorized | Not logged in, or token invalid/expired |
+| `403` | Forbidden | Logged in but not allowed (wrong role) |
+| `404` | Not Found | Resource doesn't exist |
+| `409` | Conflict | Duplicate — email/username already registered |
+| `500` | Internal Server Error | Something broke on the server |
+
+Rule of thumb: `2xx` = success, `4xx` = client's fault, `5xx` = server's fault.
+
+**Headers** — Express sets `Content-Type: application/json` automatically when you call `res.json()`. You rarely set headers manually unless handling CORS or cookies.
+
+**Body** — the JSON payload. `res.json()` serialises your object:
+
+```typescript
+res.status(201).json({ token, user });
+// sends: { "token": "eyJ...", "user": { "id": "...", ... } }
+
+res.status(401).json({ error: 'Invalid credentials' });
+// sends: { "error": "Invalid credentials" }
+```
+
+Consistency rule: **always use the same shape for errors** — `{ error: "..." }`. The frontend team writes one error handler that works everywhere.
+
+---
+
+## Lesson 85 — Common Express req and res methods used in this project
+
+**Reading from `req`:**
+
+```typescript
+req.body                    // parsed JSON body (POST/PUT/PATCH)
+req.params.id               // route segment: /users/:id
+req.query.exercise          // query string: ?exercise=squats
+req.headers.authorization   // "Bearer <token>"
+req.user                    // attached by requireAuth middleware (custom)
+```
+
+**Sending with `res` — the three patterns you'll use:**
+
+```typescript
+// 1. Success with data
+res.status(200).json({ token, user });
+res.status(201).json({ token, user });
+
+// 2. Operational error (AppError caught)
+res.status(error.statusCode).json({ error: error.message });
+
+// 3. Unexpected error (500)
+res.status(500).json({ error: 'Something went wrong' });
+```
+
+**The one rule:** call `res.json()` (or any `res.send*`) **exactly once** per request. Calling it twice throws a "headers already sent" error. This is why error handlers use `return` after sending, and why `try/catch` always ends with one clear path.
+
+Express does not enforce this — TypeScript does not catch it — it's a runtime crash if you get it wrong. The `void` return type on controller functions is your reminder: after sending, there is nothing left to do.
