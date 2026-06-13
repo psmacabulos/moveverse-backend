@@ -44,7 +44,7 @@ const findByEmail = async (email: string): Promise<User | null> => {
 };
 
 // Used by auth middleware
-const findById = async (id: string): Promise<SafeUser> => {
+const findById = async (id: string): Promise<SafeUser | null> => {
   const result = await pool.query(
     `SELECT id, username, email, google_id, role, created_at
             FROM users WHERE id = $1`,
@@ -52,4 +52,4 @@ const findById = async (id: string): Promise<SafeUser> => {
   );
   return result.rows[0] ?? null;
 };
-export { createUser, findByEmail, findById };
+export { createUser, findByEmail, findById, User, SafeUser };

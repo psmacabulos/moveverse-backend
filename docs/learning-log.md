@@ -660,3 +660,515 @@ Build order: model → service → controller → routes → middleware. Each la
 ## Lesson 56 — Login errors should not leak which field was wrong
 
 Wrong email and wrong password must return the **same** error ("Invalid credentials", 401). If "email not found" and "wrong password" are different messages, an attacker can probe which emails are registered (user enumeration). The service knows the difference; the response must not show it.
+
+---
+
+## Lesson 57 — File naming: user.model.ts (the `<noun>.<layer>.ts` convention)
+
+The pattern is `<noun>.<layer>.ts` — the **what** first, the **which layer** second. The dot has zero technical meaning to Node or TypeScript; only the final `.ts` matters to the compiler. It is purely a readability convention.
+
+Why the suffix exists: the same noun lives at several layers (`user.model.ts`, `user.service.ts`, `user.controller.ts`, `user.routes.ts`). Without the suffix they would all be `user.ts` in different folders — identical in editor tabs, fuzzy-find, and stack traces, where the folder name disappears.
+
+Styles seen in real codebases:
+
+| Style           | Where it comes from                                              |
+| --------------- | ---------------------------------------------------------------- |
+| `user.model.ts` | Angular style guide, NestJS — the TypeScript ecosystem default   |
+| `user_model.ts` | Developers from Python/Ruby, where snake_case filenames are norm |
+| `userModel.ts`  | Older Node/JavaScript projects                                   |
+| `models/user.ts`| Folder carries the role — common in Go, minimalist codebases     |
+
+The rule that actually matters: **consistency beats preference**. One pattern across the whole codebase looks professional; a mix signals nobody is steering. The choice is made once (this project chose dot style in Phase 1) and never debated again.
+
+Naming nuance: the file is `user.model.ts` (singular — it represents the concept of *a user*) while the table is `users` (plural — SQL convention, a table holds many rows). And the service is `auth.service.ts`, not `user.service.ts`, because register/login are auth *operations* performed on user *data* — Phase 11 adds a separate `user.service.ts` for profile operations, and both call the same `user.model.ts`.
+
+---
+
+## Lesson 58 — Generics (`<>`) and the Omit utility type
+
+Angle brackets are **type parameters** — like function arguments, but for types, evaluated at compile time:
+
+```typescript
+Promise<void>          // a Promise that resolves to nothing
+pool.query<User>(...)  // a query whose rows have the shape User
+Omit<User, 'password_hash'>  // built-in "type function": User minus one property
+```
+
+`Omit<User, 'password_hash'>` produces a copy of the `User` type with that property deleted:
+
+```typescript
+type SafeUser = Omit<User, 'password_hash'>;
+// identical to rewriting the whole interface by hand without password_hash
+```
+
+Why `Omit` instead of writing the second interface manually: **one source of truth**. Add a column to `User` and `SafeUser` updates itself; a hand-written copy silently drifts out of sync.
+
+Why a SafeUser type at all: `password_hash` must never appear in an HTTP response. Types don't exist at runtime — the SQL column list is what actually excludes the hash. But declaring `findById(): Promise<SafeUser | null>` puts the **compiler** on guard: any future code that tries to pass the hash through that path becomes a compile error. The type is the guard rail; the SQL is the gate.
+
+**The correct vocabulary (interview-ready):**
+
+| Concept | Correct term |
+| --- | --- |
+| `Omit`, `Pick`, `Partial`, `Required` — prebuilt, no import needed | built-in **utility types** |
+| The `<>` brackets | **generics** |
+| What goes inside the `<>` | **type arguments** |
+| One named part of a type's shape (e.g. `email`) | a **property** (or **key**) |
+| Creating `SafeUser` from `User` | **deriving** a type |
+
+Interview sentence: "`Omit` is a built-in utility type. It's generic — it takes two type arguments: the type to start from and the keys to remove. I used it to derive `SafeUser` from `User` without the `password_hash` property, so the compiler prevents the hash leaking into API responses."
+
+⚠️ Do not confuse **`Omit`** (TypeScript utility type) with **OAuth** (the authorization protocol behind "Sign in with Google", Phase 7b) — completely unrelated despite sounding similar.
+
+---
+
+## Lesson 59 — Why createUser() returns the row (Promise&lt;SafeUser&gt; vs Promise&lt;void&gt;)
+
+The return type of a function follows from one question: **who calls this, and what do they need next?**
+
+`Promise<void>` fits fire-and-forget scripts (`connectDB()`, `runMigrations()`, seeding) — the caller only needs "it finished without throwing."
+
+`createUser()` must return the new row because the caller (`register()` in the service) needs it to finish its own job — and the most important values are **born inside the database** at insert time:
+
+```
+id          UUID DEFAULT gen_random_uuid()   ← Postgres invents this
+role        DEFAULT 'user'                   ← Postgres fills this
+created_at  DEFAULT NOW()                    ← Postgres stamps this
+```
+
+The service sent in username/email/hash, but it cannot sign a JWT without the new `id` — which didn't exist until the INSERT ran. Returning `void` would force a second query (`findByEmail` right after inserting) just to learn what the database already knew. `INSERT ... RETURNING` hands the created row back in the same round trip.
+
+| Function | Caller needs | Return type |
+| --- | --- | --- |
+| `runMigrations()` | just "did it work?" | `Promise<void>` |
+| `createUser()` | generated `id`, `role`, `created_at` | `Promise<SafeUser>` |
+| `findByEmail()` | the row, or "not found" | `Promise<User \| null>` |
+
+`void` is not the default for async functions — it is the special case for when there is genuinely nothing to give back.
+
+---
+
+## Lesson 60 — RETURNING and the shape of result.rows
+
+`RETURNING` bolts onto the end of an `INSERT` (also works on `UPDATE` and `DELETE`): "after the write, give me back the affected rows, with these columns." Without it, an INSERT reports only a row count. It is a **PostgreSQL feature**, not universal SQL — MySQL doesn't have it.
+
+The `pg` library always returns the same shape: `result.rows` is an **array of row objects**, regardless of the query. The difference is how many elements can be in it:
+
+| Query | rows on success | rows[0] |
+| --- | --- | --- |
+| `INSERT ... RETURNING` (one row) | exactly one element | always safe to use directly |
+| `SELECT ... WHERE email = $1` | one element **or empty** | may be `undefined` → use `rows[0] ?? null` |
+
+A failed INSERT (e.g. duplicate email hitting a UNIQUE constraint) does not produce zero rows — it **throws**. That is why `createUser()` can return `rows[0]` directly while the find functions need the `?? null` guard.
+
+---
+
+## Lesson 61 — Where to handle errors: the layer that can do something meaningful
+
+**Principle: catch an error at the layer that has the context to act on it.** A try/catch that just re-throws (or worse, swallows the error and returns null) is noise — or a bug.
+
+For a duplicate email at registration, each layer translates the error into its own language:
+
+```
+model:       no try/catch — let the Postgres error bubble up untouched
+service:     error.code === '23505' (unique_violation) + "I'm in a register flow"
+             → throws a clean business error: "Email already registered"
+controller:  catches the business error → picks the HTTP status: 409 Conflict
+```
+
+The model can't act meaningfully (it doesn't know HTTP, or whether a duplicate even matters to the caller). The service is the first layer with **context** — it knows what a unique violation *means* in this operation.
+
+Practical notes:
+
+- Check `error.code === '23505'`, not the message text — Postgres error codes are stable across versions; messages are not.
+- A pre-check (`findByEmail()` before inserting) gives friendlier UX but does **not** replace handling 23505 — two registrations can race between check and insert. The DB unique constraint is the real guarantee; the pre-check is politeness.
+- Unanticipated errors (DB down) are caught by nobody in particular — they bubble to the global error handler (Phase 13), which logs and returns a generic 500. That safety net is why you don't write try/catch everywhere "just in case."
+
+---
+
+## Lesson 62 — VARCHAR vs TEXT in PostgreSQL
+
+In Postgres they are stored **identically** — same performance, same memory. The only difference: `VARCHAR(n)` adds a **length constraint** (inserting longer data is rejected with an error). `TEXT` accepts any length.
+
+So the design question is never "which is faster?" but **"does a max length make business sense for this data?"**
+
+| Column | Type | Why |
+| --- | --- | --- |
+| `username` | `VARCHAR(50)` | Displayed in UIs/leaderboards — a limit is a business rule |
+| `email` | `VARCHAR(255)` | Emails have a real max (254 per spec); 255 is traditional |
+| `password_hash` | `TEXT` | bcrypt controls the length, not us — a future algorithm change must not break storage |
+| `google_id` | `TEXT` | Google controls the format — never limit data whose format belongs to someone else |
+
+⚠️ Postgres-specific: in MySQL, VARCHAR and TEXT genuinely differ in storage and indexing. Interview phrasing: "In Postgres they perform identically — VARCHAR just adds a length check, so I use VARCHAR(n) where a limit is a business rule and TEXT where I don't control the format."
+
+---
+
+## Lesson 63 — How to know which model functions to create
+
+You don't invent model functions — you **discover** them by walking each user story down the layers. Start from the feature, and each layer demands things from the layer below; model functions are whatever falls out.
+
+Phase 7a walked this way:
+
+```
+"A user registers"  → register() needs:  store the user → createUser()
+                      (duplicate email/username? no lookup needed — the UNIQUE
+                       constraint checks it during the INSERT, see Lesson 65)
+"A user logs in"    → login() needs:     fetch stored hash by email → findByEmail()
+"Protected route"   → middleware needs:  load user by JWT id → findById()
+```
+
+Three stories → exactly three functions. The flows demand precisely those, nothing else. Note: `findByEmail()` belongs to the **login** story, not register — register's duplicate check is done by the database constraint, not by a query.
+
+The discipline half is **YAGNI** ("You Aren't Gonna Need It"): don't scaffold full CRUD (`getAllUsers`, `deleteUser`...) because no current story asks for it — that's untested dead code. The model file grows when new stories arrive: Phase 11's profile stories are what add `updateUsername()` and `getStatsByUser()`.
+
+Name functions after the intent found during the walk — "look up a user by email" → `findByEmail()`, not a generic `getUser(field, value)`. Specific names keep functions simple and their SQL obvious.
+
+---
+
+## Lesson 64 — Two UNIQUE columns: telling apart which one was violated
+
+`users` has two UNIQUE constraints, for different business reasons:
+
+- `email` — the **login identity**: duplicates would make `findByEmail()` ambiguous; login couldn't work
+- `username` — the **public identity**: shown on leaderboards/profiles; duplicates would allow impersonation
+
+Violating either throws the same Postgres code `23505`. To tell them apart, the error object carries a `constraint` property with the violated constraint's auto-generated name (`users_email_key`, `users_username_key`). The service checks that name → "Email already registered" vs "Username already taken."
+
+Error specificity is opposite between the two auth flows, on purpose:
+
+| Flow | Error style | Why |
+| --- | --- | --- |
+| Register | **Specific** ("username taken") | The visitor must know what to change; reveals nothing an attacker couldn't learn by trying to register |
+| Login | **Vague** ("invalid credentials") | Specific errors enable user enumeration (Lesson 56) |
+
+---
+
+## Lesson 65 — The INSERT is the check: why no findByUsername() pre-check
+
+Two ways to detect a duplicate at registration:
+
+- **Design A — ask first:** `SELECT` to see if the username exists, then `INSERT` if not
+- **Design B — just try:** `INSERT` directly; if it's a duplicate, Postgres throws
+
+The key insight: a `UNIQUE` constraint means **Postgres already checks for duplicates on every insert, automatically**. Design A asks the same question twice — and worse, its answer can go stale: two simultaneous registrations for "kath" can *both* pass the pre-check (neither row exists yet), then both insert. That gap is a **race condition**. The constraint never has the gap, because the database serialises the inserts — the second one is refused.
+
+Cinema-seat analogy: phoning to ask "is seat 12 free?" reserves nothing — someone can take it before you book. Just clicking "book" lets the booking system itself be the check.
+
+How the visitor still finds out (the error path):
+
+```
+Model:      INSERT → Postgres throws { code: '23505', constraint: 'users_username_key' }
+Service:    catch → translate to "Username already taken"
+Controller: catch → 409 + JSON error
+Visitor:    sees the message, picks another name
+```
+
+Same user experience as a pre-check — minus one query and one race condition.
+
+Why `findByEmail()` still exists: **not for duplicate-checking** — login (US-02) needs it to fetch the stored hash for `bcrypt.compare()`. No story needs `findByUsername()`, so it isn't written (YAGNI, Lesson 63).
+
+---
+
+## Lesson 66 — Positional parameters vs an input object (DTO)
+
+```typescript
+// Style A — positional
+createUser(username: string, email: string, passwordHash: string)
+
+// Style B — object parameter typed by an interface
+interface CreateUserInput { username: string; email: string; passwordHash: string; }
+createUser(input: CreateUserInput)
+```
+
+The danger with Style A here: **all three params are `string`**, so swapping arguments at the call site — `createUser(email, username, hash)` — compiles without error and creates corrupt data. That is a *positional argument bug*. Style B makes it impossible: every value is labeled at the call site, and misnamed keys are compile errors.
+
+Production rule of thumb: **1–2 params of different types → positional is fine. 3+ params, or two adjacent params of the same type → use an object.** Objects also stay readable as functions grow (Phase 9's `createSession()` will take several values).
+
+Interview term: an interface describing data passed between layers (`CreateUserInput`) is a **DTO — Data Transfer Object**. "I used a DTO-style input object to avoid positional argument bugs since all fields were strings."
+
+---
+
+## Lesson 67 — Reading a parameter: name vs type annotation
+
+Every parameter is `name: Type` — the name is invented by you, the type must exist:
+
+```typescript
+(username: string)            // name "username", type string
+(input: CreateUserInput)      // name "input", type CreateUserInput — same pattern
+```
+
+`input` is not a keyword — it could be `data`, `params`, anything. A type can never stand alone in a parameter list (`createUser(CreateUserInput)` won't compile): types are erased at runtime (Lesson 3), so an actual variable name must hold the value.
+
+Common variant — **destructuring** the object directly in the parameter list:
+
+```typescript
+const createUser = async ({ username, email, passwordHash }: CreateUserInput) => ...
+```
+
+One object argument, properties immediately unpacked as local variables (`username` instead of `input.username`). Callers pass the same single object either way — destructuring only changes life *inside* the function.
+
+---
+
+## Lesson 68 — Where types live: co-location vs a types/ folder
+
+**Co-location principle: put things next to the code that owns them; promote to a shared place only when multiple owners genuinely need them.**
+
+`User`, `SafeUser`, `CreateUserInput` → live in `user.model.ts` and are exported from it. The model is the **source of truth** for row shapes (it mirrors the table), and keeping interface + SQL in one file means a column change edits both in the same view — a separate types folder lets them silently drift. A central `types/index.ts` with hundreds of unrelated types is the same mistake as one giant `utils.ts`.
+
+When `src/types/` IS right:
+
+1. **Truly global shapes** owned by no layer (e.g. a standard `ApiError` used by all controllers + the global error handler)
+2. **Augmenting someone else's types** — e.g. `src/types/express.d.ts`, a declaration file extending Express's `Request` so `req.user` exists. Global by nature; cannot live in a model. (Needed in Phase 7a for the auth middleware.)
+
+Rule of thumb: co-locate by default; moving a type later is cheap (editors update all imports). When in doubt, keep it local.
+
+---
+
+## Lesson 69 — How to verify a model layer without anyone reviewing it
+
+The verification ladder, quickest to production-grade:
+
+1. **Compiler + linter** (`npx tsc --noEmit`, `npm run lint`) — proves the TypeScript is coherent, NOT that queries work. TypeScript trusts your SQL (Lesson 58). "It compiles" ≠ "it works."
+2. **Scratch script** — a temporary `src/db/scratch.ts` (same standalone pattern as seed/migrate): import the model functions, call each one against the **local Docker DB**, `console.log` results, compare against expectations **written down beforehand**. Delete the script after.
+3. **psql — the ground truth** — `docker compose exec db psql ...` then `SELECT` to independently confirm what was actually stored (right columns? role defaulted? hash present?). Code can lie about what it did; the database cannot.
+4. **Automated tests** (Jest/Vitest, CI Level 3) — the scratch checklist written as permanent tests, re-run on every push forever. Level 2 verifies today's code; Level 4 keeps verifying it when you're not watching.
+
+The scratch checklist for user.model.ts — note half are **unhappy paths** (beginners only test success):
+
+- created row has DB-generated `id`, default `role`, timestamps
+- `createUser` / `findById` results contain **no** `password_hash`
+- `findByEmail` result **does** contain it
+- unknown email/id → `null` (not undefined, no crash)
+- duplicate username/email → throws with `code === '23505'`
+
+---
+
+## Lesson 70 — npx: running a tool without a package.json script
+
+Installed packages put their executables in `node_modules/.bin/` — which is not on the PATH, so typing `ts-node` alone fails. `package.json` scripts work because npm adds that folder to the PATH while running them. **`npx` does the same for one-off commands**: it looks in `node_modules/.bin/` first and runs the tool from there.
+
+```
+npx ts-node src/db/scratch.ts
+```
+
+Perfect for temporary invocations that don't deserve a permanent script entry.
+
+Gotcha in a Docker setup: `DB_HOST=db` only resolves **inside the Docker network** (Lesson 15). Run ad-hoc DB scripts inside the app container, like migrations:
+
+```
+docker compose exec app npx ts-node src/db/scratch.ts
+```
+
+Bonus: inside the container, docker-compose has already injected the env vars — no dotenv needed.
+
+---
+
+## Lesson 71 — The life of a JWT
+
+A JWT is just a **string**: three base64 chunks joined by dots — `header.payload.signature`. Base64 is encoding, not encryption — anyone can read the header and payload (try jwt.io). Only the signature is unforgeable.
+
+**Birth** — at login/register: `jwt.sign({ userId }, secret, { expiresIn: '7d' })`
+1. header JSON (`{"alg":"HS256"}`) → base64
+2. payload + auto-added `exp` timestamp → base64
+3. `header.payload` + the **secret** → HMAC-SHA256 → signature
+4. join with dots, return the string
+
+**Travel** — returned as `{ token, user }`; the frontend stores it (where = frontend's concern).
+
+**Working life** — frontend sends `Authorization: Bearer <token>` on every protected request. `jwt.verify(token, secret)` re-computes the signature from the incoming header+payload using the server's secret and compares:
+- match → "I signed this, nothing was altered" → trust the userId inside
+- payload tampered → recomputed signature ≠ attached signature → 401
+- attacker can't forge a matching signature **without the secret** — which never leaves the server. That's the entire security model.
+
+No DB lookup, no session table — the token proves itself (stateless). The middleware's `findById()` is to fetch *fresh user data*, not to validate the token.
+
+**Death** — `jwt.verify` checks `exp`; past it → 401 → log in again. Expiry is the only death (no early revocation — Lesson 52's trade-off), which is why tokens are born with a lifespan.
+
+Nuance: the browser only **carries** the token — the server does all verifying (the browser doesn't have the secret). Client holds, server checks.
+
+---
+
+## Lesson 72 — The jsonwebtoken methods used in this project
+
+```typescript
+import jwt from 'jsonwebtoken';
+```
+
+**`jwt.sign(payload, secret, options)` → string** — creates a token. Used in `generateJWT()` (service).
+
+```typescript
+const token = jwt.sign(
+  { userId: user.id },          // payload — readable by anyone, keep minimal
+  process.env.JWT_SECRET,       // secret — the trust anchor
+  { expiresIn: '7d' }           // options — adds the exp claim ('7d', '1h', 60 = seconds)
+);
+// → "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOiJhYmMt..."
+```
+
+**`jwt.verify(token, secret)` → payload (or throws)** — checks signature + expiry. Used in `requireAuth()` (middleware). This is the only method that proves a token is genuine.
+
+```typescript
+try {
+  const payload = jwt.verify(token, process.env.JWT_SECRET) as { userId: string };
+  // valid → payload.userId is trustworthy
+} catch (error) {
+  // invalid → ALWAYS respond 401. Two failure types if needed:
+  // error instanceof jwt.TokenExpiredError  → token is real but expired
+  // error instanceof jwt.JsonWebTokenError  → malformed/tampered/wrong secret
+}
+```
+
+Note: `verify` **throws** on failure (unlike the model's `null` convention) — so it always sits inside try/catch.
+
+**`jwt.decode(token)` → payload** — reads the payload **WITHOUT checking the signature**. ⚠️ Never use for auth — it trusts anything, including forged tokens. Only legitimate use: debugging/inspecting a token's contents (same as pasting it into jwt.io). If you ever see `decode` in an auth middleware in a code review, that is a critical security bug.
+
+| Method | Checks signature? | On failure | Used in |
+| --- | --- | --- | --- |
+| `sign` | creates it | throws (bad inputs) | auth.service → generateJWT() |
+| `verify` | ✅ yes | **throws** | auth.middleware → requireAuth() |
+| `decode` | ❌ NO | returns null | debugging only — never auth |
+
+---
+
+## Lesson 73 — The Node version lives in three places — keep them in sync
+
+Upgrading Node (e.g. 22 → 24) is not one edit. The version is pinned independently in:
+
+| Where | Controls |
+| --- | --- |
+| `Dockerfile` — `FROM node:24-alpine` | local Docker development |
+| `package.json` — `engines` field | what Heroku installs in production |
+| `.github/workflows/ci.yml` — `node-version` | what CI lints/builds/tests on |
+
+If they drift, CI tests on a different version than production runs — the recipe for "works in CI, breaks in prod" bugs. Update all three in the same commit.
+
+Applying the change locally: a `FROM` line change requires `docker compose up --build` (Lesson 16) and invalidates the **entire layer cache** (every step builds on the base image, Lesson 13) — the rebuild pulls the new image and re-runs `npm ci` from scratch. Slow once; normal. Then verify instead of assuming: `docker compose exec app node --version`.
+
+---
+
+## Lesson 74 — AppError vs plain Error: two families, two audiences
+
+| | Operational (business) errors | Programmer/config errors |
+| --- | --- | --- |
+| Examples | "Email already registered", "Invalid credentials" | `JWT_SECRET is not set`, null bug |
+| Caused by | the user — and the user can fix it | the developer/ops — only they can fix it |
+| Status code | meaningful (409, 401) | only ever 500 |
+| Throw | `AppError(message, statusCode)` | plain `Error` |
+| Message audience | **the end user** (goes into the JSON response) | **the developer** (goes into server logs) |
+
+The mechanism: the controller treats `instanceof AppError` as "**this message is safe to show the user**" and sends it. Plain Errors fall through to the generic path — client sees "Something went wrong", the real message lands in the logs.
+
+Mixing them is harmful: `new AppError('JWT_SECRET is not set', 500)` would leak server internals into HTTP responses — reconnaissance for attackers. The class you throw is a statement about **who the message is addressed to**.
+
+Interview terms: **operational errors** (expected, handled, user-facing) vs **programmer errors** (bugs/misconfig, generic response, logged).
+
+---
+
+## Lesson 75 — process.env is always `string | undefined` (and what belongs in env vars)
+
+TypeScript cannot read `.env` at compile time, so **every** `process.env.X` is typed `string | undefined`. APIs that want a specific type reject it — e.g. jsonwebtoken's `expiresIn` accepts `number | StringValue` (a template-literal type matching `'7d'`, `'1h'`...), so `string | undefined` fails twice: the `undefined` and the "any old string".
+
+Ways to narrow:
+- a runtime check: `if (!secret) throw ...` → type becomes `string` below the check
+- fallback + assertion: `(process.env.JWT_EXPIRES_IN ?? '7d') as jwt.SignOptions['expiresIn']` — `as` is a **type assertion**: "compiler, trust me." Every `as` transfers responsibility from the type system to you; use sparingly.
+
+The better question first: **should this be an env var at all?** Env vars are for secrets (`JWT_SECRET`) and per-environment differences (`DB_HOST`). `'7d'` is neither — it's a design decision, identical everywhere. Constants belong in code: type-checked, reviewed, and impossible to break with a missing config var on deploy day (Lesson 50's bug genre). YAGNI applies to configuration too:
+
+```typescript
+return jwt.sign({ userId }, secret, { expiresIn: '7d' });
+```
+
+---
+
+## Lesson 76 — Same shape ≠ same type: DRY applies to meaning, not shape
+
+`RegisterInput` (service) and `CreateUserInput` (model) share two of three fields — tempting to merge. Don't. The differing field is a different **thing**, not a different name:
+
+```typescript
+interface RegisterInput   { ...; password: string; }      // plain text — radioactive
+interface CreateUserInput { ...; passwordHash: string; }  // safe residue after bcrypt
+```
+
+The boundary between them is the `bcrypt.hash()` line inside `register()` — the two types document where the plain password dies. A shared interface would make "forgot to hash, passed it straight through" look natural; separate types make it at least a visible lie (`passwordHash: input.password`) and keep layers free to evolve apart (RegisterInput gains validation; CreateUserInput gains `googleId` in 7b).
+
+Term: merging types that merely *look* alike is removing **incidental duplication** — a classic over-DRY mistake. Keep a type per meaning, named for its meaning (`CreateUserInput`, not a generic `UserInput`).
+
+---
+
+## Lesson 77 — How to discover an unknown error's shape (no AI needed)
+
+Three research routes, most practical first:
+
+1. **Trigger it and print it.** Cause the error on purpose in a scratch script and `console.log(e)` — the whole object. The pg error prints `severity`, `code`, `detail`, `table`, `constraint`... The error object is its own documentation. This is how most developers actually learn error shapes.
+2. **Read the library's types.** The `pg` driver wraps Postgres errors in a `DatabaseError` class (visible in `node_modules/pg-protocol/dist/messages.d.ts` — F12 / Go to Definition works on dependencies too). Because it's exported, the cast can be replaced with a proper runtime check:
+
+```typescript
+import { DatabaseError } from 'pg';
+
+if (error instanceof DatabaseError && error.code === '23505') {
+  if (error.constraint === 'users_email_key') { ... }
+}
+```
+
+`instanceof` narrows `unknown` safely — no `as` cast needed (better than the EXAMPLES file version).
+
+3. **The official reference for the values.** PostgreSQL manual, appendix "PostgreSQL Error Codes": `23505 unique_violation`, `23503 foreign_key_violation` (coming in Phase 9), `23502 not_null_violation` — all in Class 23, Integrity Constraint Violation.
+
+Why `catch (error: unknown)`: JavaScript can `throw` anything (even a string), so TypeScript types every catch variable `unknown`, forcing a narrowing check before property access. `instanceof` is the narrowing tool of choice.
+
+---
+
+## Lesson 78 — Rest operator in destructuring: collecting what remains
+
+```typescript
+const { password_hash, ...safeMember } = member;
+```
+
+Read as: "pull `password_hash` into its own variable — collect **everything else** into a new object called `safeMember`." The name after `...` is invented by you.
+
+```
+member         → { id, username, email, password_hash, google_id, role, created_at }
+password_hash  → '$2b$10$...'          // extracted, used for nothing, discarded
+safeMember     → { id, username, email, google_id, role, created_at }  // hash gone
+```
+
+This is the **runtime** equivalent of `SafeUser = Omit<User, 'password_hash'>` (Lesson 58) — the hash is never copied across, not just hidden by a type. Used in `login()` because `findByEmail()` must return the hash (bcrypt.compare needs it), but the hash must not leave the service after that check.
+
+Same `...` syntax, two directions:
+- **rest** — collects what remains after destructuring: `const { a, ...rest } = obj`
+- **spread** — expands into something: `const newObj = { ...obj, extraKey: value }`
+
+---
+
+## Lesson 79 — Shorthand vs explicit object properties: key name matters
+
+```typescript
+const safeUser = { ... };
+
+return { token, safeUser };        // shorthand → { token: token, safeUser: safeUser }
+return { token, user: safeUser };  // explicit  → { token: token, user: safeUser }
+```
+
+Shorthand `{ x }` locks the key name to the variable name. When the variable name and the required key name differ, use explicit `{ keyName: variableName }`.
+
+TypeScript enforces the declared return type shape — `Promise<{ token: string; user: SafeUser }>` means the key must be literally `user`. Returning `{ safeUser }` creates a `safeUser` key, not a `user` key → type error. The data is there, just under the wrong name, which would break every caller that writes `result.user` at runtime.
+
+---
+
+## Lesson 80 — Semicolons vs commas inside `{}`: type vs value
+
+Same `{}` symbol, two completely different things with their own separator rules:
+
+```typescript
+// TYPE definition (TypeScript only — erased at compile time) → semicolons
+Promise<{ token: string; user: SafeUser }>
+
+// OBJECT LITERAL (JavaScript value — exists at runtime) → commas
+return { token, user: safeUser }
+```
+
+| What it is | World | Separator |
+| --- | --- | --- |
+| Type / interface definition | TypeScript (compile time only) | `;` semicolon |
+| Object literal (a real value) | JavaScript (runtime) | `,` comma |
+
+An inline type like `{ token: string; user: SafeUser }` is just an anonymous interface — TypeScript's type syntax, same rules as a named `interface {}` block. Seeing semicolons inside `{}` means "I'm describing a shape." Seeing commas means "I'm building a real object."
