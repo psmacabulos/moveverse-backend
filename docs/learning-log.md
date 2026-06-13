@@ -1460,3 +1460,213 @@ This means no transformation layer is needed anywhere. The DB row goes straight 
 **When you would reconsider this**
 
 If MoveVerse ever published a public API consumed by third-party developers — most of whom would be JavaScript developers — camelCase would be the better choice. At that point, add a transform at the controller layer (or use an ORM like Prisma that handles it automatically).
+
+---
+
+## Lesson 90 — What middleware is and why requireAuth exists
+
+**The business reason**
+
+Every route after login — saving a workout, viewing your profile, checking the leaderboard rank — should only work if you are logged in. The frontend proves this by sending the JWT it received at login in every protected request:
+
+```
+Authorization: Bearer <token>
+```
+
+The middleware is the guard that sits between the route and the controller. It reads that header, verifies the token, and either lets the request through or stops it with a 401. Without it, the controller has no way to know who is making the request.
+
+**The middleware function signature**
+
+```typescript
+(req: Request, res: Response, next: NextFunction): void
+```
+
+It looks exactly like a controller — `req`, `res` — plus one extra argument: `next`. Calling `next()` tells Express "I'm done here, move on to the next handler." Not calling it (and sending a response instead) stops the chain dead.
+
+**How it sits between the route and the controller**
+
+```typescript
+router.get('/me', requireAuth, handleGetMe);
+//                ^^^^^^^^^^^
+//                middleware runs first
+//                only if it calls next() does handleGetMe run
+```
+
+**What requireAuth does, step by step**
+
+1. Read `req.headers.authorization` — expect `Bearer <token>`
+2. If missing or wrong format → `res.status(401).json(...)` and `return` — stop
+3. Call `jwt.verify(token, secret)` — throws if expired or tampered
+4. If valid → attach `req.user = { userId: decoded.userId }` and call `next()`
+5. If verify throws → catch it, send 401 — stop
+
+---
+
+## Lesson 91 — The `next` function: how Express chains handlers
+
+Express processes a request through a chain of functions. Each function either:
+- **Sends a response** — the chain ends (no more handlers run)
+- **Calls `next()`** — passes control to the next handler in the chain
+
+```
+request → requireAuth → handleGetMe → response
+              ↓ next()       ↓ res.json()
+```
+
+If `requireAuth` sends a 401, it does NOT call `next()`, so `handleGetMe` never runs. This is how middleware "guards" a route.
+
+**The rule:** in any middleware function, you must do exactly one of:
+- Call `next()` (hand off)
+- Send a response (end the cycle)
+
+Never both. Never neither (the request would hang forever with no response).
+
+---
+
+## Lesson 92 — TypeScript module augmentation: adding `req.user` to Express
+
+Express's `Request` type does not have a `user` property — it's not part of the library. If you write `req.user = { userId: '...' }` in the middleware, TypeScript throws a compile error: *Property 'user' does not exist on type 'Request'.*
+
+The fix is **module augmentation** — you tell TypeScript to add a property to an existing third-party type, without modifying the library itself. You do this in a `.d.ts` declaration file:
+
+```typescript
+// src/types/express.d.ts
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { userId: string };
+    }
+  }
+}
+```
+
+**Why `user?` and not `user`?**
+
+The `?` makes it optional. Unauthenticated routes (register, login, leaderboard) do not have a user attached — if `user` were required, TypeScript would complain every time you accessed `req` on a public route.
+
+**Why a `.d.ts` file and not a `.ts` file?**
+
+A `.d.ts` file contains only type declarations — no runtime code. It is automatically picked up by the TypeScript compiler as long as it lives inside the `src/` directory and `tsconfig.json` includes that path. No import needed anywhere.
+
+---
+
+## Lesson 93 — What `jwt.verify()` actually returns at runtime
+
+`jwt.verify(token, secret)` returns the **decoded payload** — exactly what was passed into `jwt.sign()` when the token was created, plus two standard fields the JWT library adds automatically:
+
+```javascript
+// We signed: jwt.sign({ userId }, secret, { expiresIn: '7d' })
+// verify returns:
+{
+  userId: "3f7a1b2c-...",   // what we put in
+  iat: 1749123456,          // "issued at" — Unix timestamp, added automatically
+  exp: 1749728256           // "expiry"    — Unix timestamp, added automatically
+}
+```
+
+- `iat` = issued at — when the token was created
+- `exp` = expiry — `iat` + 7 days in our case
+
+`jwt.verify()` checks `exp` against the current time automatically. If the token is expired, tampered with, or signed with the wrong secret — it **throws** an error instead of returning. That is why the call must be inside a `try/catch`.
+
+**Why we cast `as JwtPayload`**
+
+TypeScript sees the return type of `jwt.verify()` as `string | JwtPayload` — it does not know our payload's shape. The `as JwtPayload` cast tells TypeScript: "trust me, this object has a `userId` string." At runtime, nothing changes — the object still has `iat` and `exp` — but TypeScript now allows `decoded.userId` without a compile error.
+
+**The rule: to know what `decoded` contains, always look at `generateJWT`.**
+
+The payload you get back from `verify` is exactly what you put into `sign`. If you do not know what keys were signed, go back to `generateJWT` and read what was passed as the first argument.
+
+---
+
+## Lesson 94 — How to add more data to the JWT payload (e.g. role)
+
+The JWT payload is just an object — you can put any data you want into it by adding more properties to the object passed to `jwt.sign()`.
+
+**Example: adding `role`**
+
+```typescript
+// Before — only userId
+const generateJWT = (userId: string): string => {
+  return jwt.sign({ userId }, secret, { expiresIn: '7d' });
+};
+
+// After — userId + role
+const generateJWT = (userId: string, role: 'user' | 'admin'): string => {
+  return jwt.sign({ userId, role }, secret, { expiresIn: '7d' });
+};
+```
+
+At the call sites (`register` and `login`), pass the role from the user object:
+
+```typescript
+const token = generateJWT(user.id, user.role);
+```
+
+`user.role` already exists on `SafeUser` — it comes directly from the DB column which defaults to `'user'`.
+
+**Also update `JwtPayload`** to match what is now being signed:
+
+```typescript
+interface JwtPayload {
+  userId: string;
+  role: 'user' | 'admin';  // add this
+}
+```
+
+`JwtPayload` and the object passed to `jwt.sign()` must always stay in sync — they are the same contract, one for TypeScript and one for the JWT library.
+
+**When to add role to the token**
+
+Not now. Role is only needed when building admin-only routes (a later phase). Adding it before it is used is scope creep. When that phase arrives: update `generateJWT`, update `JwtPayload`, update `req.user` in `express.d.ts`, and add a separate `requireAdmin` middleware.
+
+---
+
+## Lesson 95 — `declare global`, `namespace`, `interface`, and `export {}` in a `.d.ts` file
+
+This is the full pattern used in `src/types/express.d.ts`:
+
+```typescript
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { userId: string };
+    }
+  }
+}
+
+export {};
+```
+
+Each keyword has a specific job:
+
+**`declare`**
+
+Tells TypeScript: "I am describing a type — there is no runtime code here." It is a compile-time-only instruction. Nothing from a `declare` block ends up in the compiled JavaScript.
+
+**`declare global { ... }`**
+
+`global` means: "put this declaration in the global scope, visible everywhere in the project without importing." Together, `declare global { ... }` is how you add types to the global environment from inside a module file.
+
+**`namespace Express`**
+
+Express uses TypeScript namespaces internally to organise its types. `namespace Express` opens that namespace so you can reach inside it. Think of it like opening a drawer labelled "Express" that already exists — you are not creating it, you are adding something to it.
+
+**`interface Request { ... }`**
+
+TypeScript has a feature called **declaration merging** — if you declare an `interface` with the same name as one that already exists, TypeScript merges the two rather than replacing the first. Express already has an `interface Request` with `body`, `params`, `query`, `headers`, and so on. Writing another `interface Request` here does not replace it — it *adds* `user?` to it. The result is one merged interface with all the original properties plus yours.
+
+**`export {}`**
+
+This is the least obvious one. TypeScript treats files in one of two ways:
+
+- **Script** — no `import` or `export` statements → declarations are automatically global
+- **Module** — has at least one `import` or `export` statement → declarations are scoped to that file only
+
+`declare global` is only meaningful inside a **module** file. If the file has no imports or exports, TypeScript sees it as a script, `declare global` has no effect, and the augmentation does not apply correctly.
+
+`export {}` is a no-op at runtime — it exports nothing — but it makes TypeScript treat the file as a module. That single line is what activates `declare global`.
+
+**In plain English, the whole file says:**
+
+"This file is a module (`export {}`). Inside the global scope (`declare global`), inside Express's namespace (`namespace Express`), merge `user?` into the existing Request interface (`interface Request`)."
