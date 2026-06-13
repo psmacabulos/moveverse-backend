@@ -339,3 +339,31 @@ try {
 
 **Prevention**  
 All code that can throw — including body reads — must live inside the try block so errors are always caught and a response is always sent.
+
+---
+
+### ERR-013 — ESLint config change not reflected until Docker image is rebuilt
+
+**Environment:** Local — Docker container  
+**Command:** `npm run lint` (run via `ts-node-dev` on file save)
+
+**Error**  
+After updating `eslint.config.mjs`, the old ESLint behaviour persisted and errors continued to appear as if the config had not changed.
+
+**Root Cause**  
+Docker builds the image once and copies all project files into it at that point. Changes to files on the host — including config files like `eslint.config.mjs` — are not automatically picked up by a running container unless a volume mount covers that file. Config files at the project root are not volume-mounted (only `./src` is mounted), so the container kept running with the old config baked into the image.
+
+**Resolution**  
+Rebuild the Docker image to bake in the updated config:
+```bash
+docker compose down && docker compose up --build
+```
+
+**Prevention**  
+Any change outside `./src` requires a rebuild:
+- `eslint.config.mjs` → rebuild
+- `tsconfig.json` → rebuild
+- `package.json` / `package-lock.json` → rebuild
+- `Dockerfile` → rebuild
+
+Only files inside `./src` are volume-mounted and reflected immediately without a rebuild. Environment variable changes (`.env`) do not require a rebuild — only `docker compose down && docker compose up -d`.

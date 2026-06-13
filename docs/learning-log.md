@@ -1670,3 +1670,144 @@ This is the least obvious one. TypeScript treats files in one of two ways:
 **In plain English, the whole file says:**
 
 "This file is a module (`export {}`). Inside the global scope (`declare global`), inside Express's namespace (`namespace Express`), merge `user?` into the existing Request interface (`interface Request`)."
+
+---
+
+## Lesson 96 — curl: what it is and how to read the flags
+
+`curl` is a command-line tool for sending HTTP requests. It is built into Windows 11, macOS, and Linux — no install needed. In production teams, developers use it to manually test API endpoints before connecting a frontend.
+
+**Anatomy of a curl command**
+
+```bash
+curl -X POST http://localhost:5600/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"player1","email":"player1@test.com","password":"password123"}'
+```
+
+| Flag | Stands for | What it does |
+|---|---|---|
+| `-X POST` | method | Sets the HTTP method. Without this, curl defaults to `GET`. |
+| `-H "..."` | header | Adds a request header. You can use `-H` multiple times for multiple headers. |
+| `-d '...'` | data | The request body. curl sends this as the body of the request. |
+| `\` | (shell) | Line continuation — splits one command across multiple lines for readability. |
+
+**Why `-H "Content-Type: application/json"` is required**
+
+This header tells the server what format the body is in. Without it, `express.json()` middleware does not parse the body — `req.body` arrives as `undefined` and the controller throws a TypeError. Always include it on POST/PUT/PATCH requests with a JSON body.
+
+**Why single quotes around the body**
+
+```bash
+-d '{"username":"player1"}'
+```
+
+The body contains double quotes. If you wrap the whole thing in double quotes, the shell tries to interpret the inner double quotes and breaks the JSON. Single quotes tell the shell: "treat everything inside literally."
+
+**Integration test vs unit test**
+
+- **Integration test** — sends a real HTTP request to the running app, which hits the real database. Verifies the full stack works end to end. Requires `docker compose up -d`.
+- **Unit test** — tests one function in isolation, no database or HTTP involved. Faster but narrower — only proves that one function behaves correctly, not that all the layers connect correctly.
+
+curl commands are always integration tests.
+
+---
+
+## Lesson 97 — The underscore prefix convention for intentionally unused variables
+
+---
+
+## Lesson 97 — The underscore prefix convention for intentionally unused variables
+
+ESLint's `no-unused-vars` rule throws an error when you declare a variable but never use it. But sometimes you *need* to declare a variable just to discard it — most commonly when destructuring an object to exclude a property:
+
+```typescript
+// We want safeUser (everything except password_hash)
+// But destructuring forces us to name the excluded property
+const { password_hash, ...safeUser } = user; // ← ESLint error: password_hash unused
+```
+
+**The fix: prefix with `_`**
+
+```typescript
+const { password_hash: _password_hash, ...safeUser } = user; // ← ESLint ignores it
+```
+
+`password_hash: _password_hash` is renamed destructuring — it takes the `password_hash` property and assigns it to a variable named `_password_hash`. The `_` prefix is a universal convention meaning: "I know this is unused — that is intentional."
+
+By default, `@typescript-eslint/no-unused-vars` ignores any variable whose name starts with `_`. No extra config needed.
+
+**Why not just use a different approach?**
+
+You could avoid the variable entirely by building the object manually:
+
+```typescript
+const safeUser = { id: user.id, username: user.username, ... }; // tedious, error-prone
+```
+
+The destructuring + underscore pattern is cleaner and more maintainable — especially as the User interface grows.
+
+---
+
+## Lesson 98 — When Docker requires a full rebuild (`--build`) vs a restart
+
+Docker builds an image once and bakes all project files into it at that point. How changes reach the running container depends on whether the file is volume-mounted.
+
+**What is volume-mounted in MoveVerse:**
+
+```yaml
+volumes:
+  - ./src:/app/src   # only src/ is mounted
+```
+
+Only `./src` is mounted — changes to any `.ts` file inside `src/` are reflected immediately because the container reads from the host folder in real time.
+
+**Everything else is baked into the image** — it does not update until you rebuild:
+
+| File changed | What to do |
+|---|---|
+| Anything in `src/` | Nothing — changes reflect immediately via volume mount |
+| `eslint.config.mjs` | `docker compose down && docker compose up --build` |
+| `tsconfig.json` | `docker compose down && docker compose up --build` |
+| `package.json` / `package-lock.json` | `docker compose down && docker compose up --build` |
+| `Dockerfile` | `docker compose down && docker compose up --build` |
+| `.env` | `docker compose down && docker compose up -d` (no rebuild needed — env vars are injected at runtime, not baked into the image) |
+
+**The symptom when you forget to rebuild**
+
+You change a config file, save it, the container keeps running — and the old behaviour continues as if nothing changed. No error, no warning. The container is simply running an old version of the file.
+
+**The rule:** if the change is outside `src/`, rebuild.
+
+---
+
+## Lesson 99 — `curl -i`: how to see the HTTP status code in the terminal
+
+By default, curl only prints the response body. The status code (`200`, `401`, `409`, etc.) is part of the response headers — and headers are hidden unless you ask for them.
+
+**Add `-i` to include headers:**
+
+```bash
+curl -i -X POST http://localhost:5600/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"nobody@test.com","password":"password123"}'
+```
+
+**What you see with `-i`:**
+
+```
+HTTP/1.1 401 Unauthorized        ← status line — method, version, code, and reason phrase
+X-Powered-By: Express
+Content-Type: application/json
+Date: ...
+                                 ← blank line separating headers from body
+{"error":"Invalid credentials"}  ← body
+```
+
+**Why the status code matters in testing**
+
+The body alone is not enough to verify a test. Two different scenarios could return the same body shape — what distinguishes them is the status code. A `401` and a `403` might both return `{ "error": "..." }`, but they mean different things:
+- `401` — not authenticated (no valid token)
+- `403` — authenticated but not allowed (valid token, wrong role)
+
+Always verify both the status code **and** the body when testing an endpoint.
