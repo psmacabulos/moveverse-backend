@@ -378,7 +378,25 @@ const folder = path.join(process.cwd(), 'src', 'db', 'migrations');
 const files = fs.readdirSync(folder);
 ```
 
-`path.join()` builds a file path correctly on any OS (handles `/` vs `\` differences). `fs.readdirSync()` reads all files in a folder.
+`path.join()` builds a file path correctly on any OS (handles `/` vs `\` differences). `fs.readdirSync()` reads all files in a folder and returns the result immediately — this is the synchronous version.
+
+**`readdirSync` vs `readdir` (async)**
+
+Node.js provides two versions of most file system operations:
+
+```typescript
+// Synchronous — blocks the thread until done, returns result directly
+const files = fs.readdirSync(folder);
+
+// Asynchronous — non-blocking, result arrives via Promise
+const files = await fs.promises.readdir(folder);
+```
+
+`readdirSync` is safe here because `migrate.ts` is a script that runs once and exits — there is no server, no incoming requests, nothing else to do while waiting. Blocking is fine.
+
+Inside an Express route handler or service, you must never use sync file operations — blocking the thread freezes every other request the server is handling. In a running server, always use `await fs.promises.readdir(...)`.
+
+**The rule:** scripts that run once and exit → sync is fine. Inside a running server → always async.
 
 ---
 
@@ -1715,10 +1733,6 @@ curl commands are always integration tests.
 
 ## Lesson 97 — The underscore prefix convention for intentionally unused variables
 
----
-
-## Lesson 97 — The underscore prefix convention for intentionally unused variables
-
 ESLint's `no-unused-vars` rule throws an error when you declare a variable but never use it. But sometimes you *need* to declare a variable just to discard it — most commonly when destructuring an object to exclude a property:
 
 ```typescript
@@ -1811,3 +1825,46 @@ The body alone is not enough to verify a test. Two different scenarios could ret
 - `403` — authenticated but not allowed (valid token, wrong role)
 
 Always verify both the status code **and** the body when testing an endpoint.
+
+---
+
+## Lesson 100 — Real-time stays on the client; the backend is called once at the boundary
+
+**The pattern**
+
+For features that involve real-time feedback during a user action (a game, a live form, a timer), keep all real-time computation on the client. The backend is only called once — at the boundary when the action is complete.
+
+**MoveVerse example — workout session**
+
+```
+During the game (client only — no network):
+  MediaPipe detects a rep → game event fires → score increments on screen
+  All of this is local. Zero backend calls. Zero latency.
+
+Session ends (one network call):
+  POST /api/v1/workout_sessions
+  { exercise_difficulty_id, reps_completed, duration_seconds }
+        ↓
+  Backend calculates score and calories independently
+  Saves to DB, returns authoritative result
+```
+
+**Why the backend never receives a score from the frontend**
+
+The frontend calculates a local score for display only. The backend recalculates it independently using `reps_completed × score_multiplier`. The backend's number is what gets stored — the frontend's number is discarded.
+
+This prevents score manipulation: a tampered request body cannot corrupt the stored score because the backend never reads a client-sent score. It derives the score itself from the raw inputs.
+
+**Why this pattern avoids latency during gameplay**
+
+If the backend were called on every rep (to confirm or compute the score), each rep would require a round-trip network call — typically 50–300ms. On a fast-paced game at 1 rep per second, this creates visible lag and freezes. The pattern avoids this entirely by keeping the game loop local and deferring all backend work until the session is over.
+
+**The general rule**
+
+| What | Where |
+|---|---|
+| Real-time feedback (score, timer, animation) | Client — no network |
+| Persistence and validation | Backend — called once at the boundary |
+| Source of truth for stored data | Always the backend's calculation |
+
+This pattern appears in many contexts beyond games: live search suggestions (client-side filter, backend only on submit), collaborative editors (local edits, server sync on save), shopping carts (local state, backend on checkout).

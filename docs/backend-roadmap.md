@@ -5,15 +5,15 @@ This is a living document — update it as the project evolves.
 
 ---
 
-## 🎯 Current Target — Phase 7a Auth
+## 🎯 Current Target — Phase 7b Google OAuth
 
-Phases 1–6 and Heroku deployment are complete. Auth (Phase 7a) is now the active focus.
+Phase 7a is complete and merged to main. Google OAuth is the next active focus.
 
 ```
 Phases 1–6   ✅ Done     Setup, server, Docker, CI/CD, database, seed data
 Heroku       ✅ Live     App deployed, migrations ran, database seeded
-Phase 7a     🔨 Active   Email + password auth — model, service, controller, routes, middleware
-Phase 7b     ⏳ Next      Google OAuth
+Phase 7a     ✅ Done     Email + password auth — register, login, JWT middleware
+Phase 7b     🔨 Next     Google OAuth
 ```
 
 ---
@@ -59,7 +59,7 @@ After Phase 12 →  Level 4: + full test suite on PR to main
 
 ---
 
-## 📊 Progress Overview — 46% complete (6 of 13 phases done)
+## 📊 Progress Overview — ~50% complete (Phase 7a done, 7b next)
 
 ```
 Phase 1  ████████████████████  ✅ Done          Setup & Tooling
@@ -69,7 +69,8 @@ Phase 3  ████████████████████  ✅ Done 
 Phase 4  ████████████████████  ✅ Done          Database Connection
 Phase 5  ████████████████████  ✅ Done          Schema & Migrations
 Phase 6  ████████████████████  ✅ Done          Seed Data
-Phase 7  ░░░░░░░░░░░░░░░░░░░░  🔨 In Progress   Authentication  ← active
+Phase 7a ████████████████████  ✅ Done          Auth — Email + Password
+Phase 7b ░░░░░░░░░░░░░░░░░░░░  🔨 Next          Auth — Google OAuth  ← active
 Phase 8  ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Exercises Endpoint
 Phase 9  ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Workout Sessions
 Phase 10 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Achievement System
@@ -235,17 +236,19 @@ Migration order matters — foreign keys require parent tables first:
 
 Every endpoint in this phase follows the **Route → Controller → Service → Model** pattern.
 
-### 7a — Email + Password  ← priority this week
+### 7a — Email + Password  ✅ Done — merged to main 2026-06-13
 
-- [ ] `src/models/user.model.ts` — `createUser()`, `findByEmail()`, `findById()`
-- [ ] `src/services/auth.service.ts` — `register()`, `login()`, `generateJWT()`
-- [ ] `src/controllers/auth.controller.ts` — `handleRegister()`, `handleLogin()`
-- [ ] `src/routes/auth.routes.ts` — `POST /api/v1/auth/register`, `POST /api/v1/auth/login`
-- [ ] `src/middleware/auth.middleware.ts` — `requireAuth()` verifies JWT, attaches `req.user`
-- [ ] Mount auth routes in `src/index.ts`
-- [ ] Test register: `POST /auth/register` → receive `{ token, user }`
-- [ ] Test login: `POST /auth/login` → receive `{ token, user }`
-- [ ] Test protection: call a protected route without a token → receive `401`
+- [x] `src/models/user.model.ts` — `createUser()`, `findByEmail()`, `findById()`
+- [x] `src/services/auth.service.ts` — `register()`, `login()`, `generateJWT()`
+- [x] `src/controllers/auth.controller.ts` — `handleRegister()`, `handleLogin()`
+- [x] `src/routes/auth.routes.ts` — `POST /api/v1/auth/register`, `POST /api/v1/auth/login`
+- [x] `src/middleware/auth.middleware.ts` — `requireAuth()` verifies JWT, attaches `req.user`
+- [x] `src/types/express.d.ts` — TypeScript augmentation for `req.user`
+- [x] Mount auth routes in `src/index.ts` at `/api/v1/auth`
+- [x] Test register: `POST /api/v1/auth/register` → `201 { token, user }`
+- [x] Test login: `POST /api/v1/auth/login` → `200 { token, user }`
+- [x] Test duplicate email → `409`, duplicate username → `409`
+- [x] Test wrong password → `401`, unknown email → `401`
 
 ```
 POST /api/v1/auth/register
@@ -279,14 +282,19 @@ Add to `ci.yml` (only on push to `dev` or `main`):
 ---
 
 ## 🏋️ Phase 8 — Exercises Endpoint
-> Goal: Authenticated users fetch all exercises with nested difficulties in one call.
+> Goal: One protected endpoint returns all active exercises with nested difficulties. Called once on login, cached in React context.
 
-- [ ] `src/models/exercise.model.ts` — `getAllExercisesWithDifficulties()`
+**Design decisions:**
+- No separate `GET /exercises/:id/difficulties` endpoint — difficulties are nested inside the exercises response
+- `score` is never sent by the frontend — backend calculates it from `reps_completed × score_multiplier`
+- Frontend displays live score locally during gameplay; backend only involved at session end
+
+- [ ] `src/models/exercise.model.ts` — `getAllExercises()` (JOIN with exercise_difficulties, group into nested structure)
 - [ ] `src/services/exercise.service.ts` — `getExercises()`
 - [ ] `src/controllers/exercise.controller.ts` — `handleGetExercises()`
 - [ ] `src/routes/exercise.routes.ts` — `GET /api/v1/exercises` (protected)
 - [ ] Mount in `src/index.ts`
-- [ ] Test: valid JWT → exercises list with difficulties nested inside each exercise
+- [ ] Test: valid JWT → exercises with nested difficulties array including target_reps and score_multiplier
 
 ```
 GET /api/v1/exercises
@@ -294,10 +302,12 @@ GET /api/v1/exercises
   → exercise.controller
   → exercise.service
   → exercise.model
-      SELECT exercises.*, exercise_difficulties.*
-      FROM exercises
-      JOIN exercise_difficulties ON ...
-      WHERE exercises.is_active = true
+      SELECT e.id, e.name, e.description, e.calories_per_rep,
+             ed.id, ed.level_name, ed.target_reps, ed.score_multiplier
+      FROM exercises e
+      JOIN exercise_difficulties ed ON ed.exercise_id = e.id
+      WHERE e.is_active = true
+      ORDER BY e.name, ed.level_name
   ← [ { id, name, calories_per_rep, difficulties: [...] } ]
 ```
 

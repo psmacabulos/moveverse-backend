@@ -235,20 +235,19 @@ The frontend obtains a Google ID token using the Google Sign-In button. It sends
 
 ## Exercises API
 
-Exercises are loaded after the user logs in. A visitor cannot access this endpoint — clicking "Play" redirects them to register or login first.
+Called once after login. The frontend stores the result in React context — each game component is linked to its exercise by name. The difficulty presets include `target_reps` (so the game knows when to stop) and `exercise_difficulty_id` (sent to the backend when saving a completed session).
 
 | Method | Endpoint | Auth Required | Description |
 |---|---|---|---|
-| GET | `/exercises` | Yes 🔒 | Fetch all active exercises |
-| GET | `/exercises/:id/difficulties` | Yes 🔒 | Fetch difficulty presets for one exercise |
+| GET | `/exercises` | Yes 🔒 | Fetch all active exercises with nested difficulty presets |
 
 ---
 
 ### GET `/exercises`
 
-🔒 Requires valid JWT. Returns all exercises where `is_active = true`.
+🔒 Requires valid JWT. Returns all exercises where `is_active = true`, with difficulty presets nested inside each exercise.
 
-The frontend stores this list in React state. The `id` from each exercise is used when fetching difficulty presets.
+**Architecture note:** The game runs entirely on the frontend — MediaPipe tracks reps, the score increments locally in real time. The backend is only called once at the end of a session (`POST /workout_sessions`). This endpoint is fetched once on login and cached in React context — no repeat calls during gameplay.
 
 **Response — `200 OK`**
 ```json
@@ -257,50 +256,15 @@ The frontend stores this list in React state. The `id` from each exercise is use
     "id": "uuid",
     "name": "Squats",
     "description": "Standard squat exercise",
-    "calories_per_rep": 0.32
-  },
-  {
-    "id": "uuid",
-    "name": "Pushups",
-    "description": "Standard push-up exercise",
-    "calories_per_rep": 0.28
+    "calories_per_rep": 0.32,
+    "difficulties": [
+      { "id": "uuid", "level_name": "Easy",   "target_reps": 5,  "score_multiplier": 1.0 },
+      { "id": "uuid", "level_name": "Medium", "target_reps": 10, "score_multiplier": 1.5 },
+      { "id": "uuid", "level_name": "Hard",   "target_reps": 20, "score_multiplier": 2.0 }
+    ]
   }
 ]
 ```
-
----
-
-### GET `/exercises/:id/difficulties`
-
-🔒 Requires valid JWT. Returns all difficulty presets for a specific exercise.
-
-The frontend stores the selected difficulty's `id` as `exercise_difficulty_id` — this UUID is required when posting a completed workout session.
-
-**Response — `200 OK`**
-```json
-[
-  {
-    "id": "uuid",
-    "level_name": "Easy",
-    "target_reps": 5,
-    "score_multiplier": 1.0
-  },
-  {
-    "id": "uuid",
-    "level_name": "Medium",
-    "target_reps": 10,
-    "score_multiplier": 1.5
-  },
-  {
-    "id": "uuid",
-    "level_name": "Hard",
-    "target_reps": 20,
-    "score_multiplier": 2.0
-  }
-]
-```
-
-**Errors:** `404` exercise not found
 
 ---
 
@@ -317,9 +281,13 @@ The frontend stores the selected difficulty's `id` as `exercise_difficulty_id` �
 
 🔒 Requires valid JWT. The `user_id` is taken from the JWT — never send it in the request body.
 
-**How score is calculated:** The backend computes `score` as `reps_completed × score_multiplier` from the difficulty preset. The frontend does not calculate or send the score.
+**How scoring works:**
+The game runs locally — the frontend displays a live score during play using its own calculation. When the session ends, the frontend sends only the raw data (`reps_completed`, `duration_seconds`, `exercise_difficulty_id`). The backend independently calculates the authoritative score and calories from the DB — the frontend's in-game score is never sent or trusted.
 
-**How calories are calculated:** The backend computes `calories_burned` as `reps_completed × calories_per_rep` from the exercise record.
+- `score = reps_completed × score_multiplier` (looked up from `exercise_difficulties`)
+- `calories_burned = reps_completed × calories_per_rep` (looked up from `exercises`)
+
+This prevents score manipulation — a tampered request body cannot change the stored score because the backend never reads a client-sent score.
 
 **Request Body**
 
