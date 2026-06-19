@@ -1,9 +1,9 @@
-# MoveVerse — Backend API Specifications
+# Altus — Backend API Specifications
 
-This document defines all HTTP endpoints exposed by the MoveVerse backend, structured around the user journey.
+This document defines all HTTP endpoints exposed by the Altus backend, structured around the user journey.
 
-**Base URL (local):** `http://localhost:5600/api/v1`
-**Base URL (production):** `https://moveverse-api.railway.app/api/v1`
+**Base URL (local):** `http://localhost:5600/v1`
+**Base URL (production):** `https://api.altus.game/v1`
 
 ---
 
@@ -39,8 +39,7 @@ Register or Login
   └─ Both return a JWT
 
 Authenticated user
-  └─ GET /exercises → choose exercise
-  └─ GET /exercises/:id/difficulties → choose difficulty
+  └─ GET /exercises → choose exercise (difficulties nested inside)
   └─ Plays game (MediaPipe tracks reps on frontend)
   └─ POST /workout_sessions → save score
   └─ Achievements checked automatically after save
@@ -81,7 +80,7 @@ All errors return JSON in this shape:
 }
 ```
 
-The HTTP status code is the machine-readable signal — `409` means conflict, `401` means unauthenticated, `400` means bad input. The `error` string is human-readable context for debugging. A separate `code` field is only needed when multiple different errors share the same HTTP status and the frontend must distinguish between them — MoveVerse does not have that requirement.
+The HTTP status code is the machine-readable signal — `409` means conflict, `401` means unauthenticated, `400` means bad input. The `error` string is human-readable context for debugging. A separate `code` field is only needed when multiple different errors share the same HTTP status and the frontend must distinguish between them — Altus does not have that requirement.
 
 | HTTP Status | Meaning |
 |---|---|
@@ -100,8 +99,7 @@ The HTTP status code is the machine-readable signal — `409` means conflict, `4
 |---|---|---|---|
 | POST | `/auth/register` | No | Create account (email + password) |
 | POST | `/auth/login` | No | Login (email + password) |
-| POST | `/auth/google` | No | Login or register via Google OAuth |
-| POST | `/auth/logout` | Yes 🔒 | Invalidate current session |
+| POST | `/auth/google` | No | Login or register via Google OAuth *(Phase 7b — deferred)* |
 
 ---
 
@@ -217,19 +215,6 @@ The frontend obtains a Google ID token using the Google Sign-In button. It sends
 ```
 
 **Errors:** `400` missing id_token — `401` invalid Google token (verification with Google API failed) — `409` email already registered with email/password — `500` internal server error
-
----
-
-### POST `/auth/logout`
-
-🔒 Requires valid JWT. No request body required. The frontend discards the token after this call.
-
-**Response — `200 OK`**
-```json
-{
-  "message": "Logged out successfully"
-}
-```
 
 ---
 
@@ -349,10 +334,10 @@ This prevents score manipulation — a tampered request body cannot change the s
 | Method | Endpoint | Auth Required | Description |
 |---|---|---|---|
 | GET | `/users/me` | Yes 🔒 | Fetch the authenticated user's full profile |
-| GET | `/users/:id` | No | Fetch a user's public profile |
 | PUT | `/users/me` | Yes 🔒 | Update the authenticated user's profile |
 | GET | `/users/me/stats` | Yes 🔒 | Fetch the authenticated user's workout statistics |
 | GET | `/users/me/achievements` | Yes 🔒 | Fetch the authenticated user's unlocked achievements |
+| GET | `/users/:id` | No | Fetch a user's public profile *(deferred — not needed for core gameplay)* |
 
 > **Route order note:** `/users/me` must be registered before `/users/:id` in the routes file. Express matches routes top-to-bottom — if `/:id` is first, the word `me` is treated as an id parameter and the `/me` route never runs.
 
@@ -377,23 +362,6 @@ This prevents score manipulation — a tampered request body cannot change the s
 
 ---
 
-### GET `/users/:id`
-
-Public profile. Safe to display to anyone.
-
-**Response — `200 OK`**
-```json
-{
-  "id": "uuid",
-  "username": "player1",
-  "created_at": "2025-01-01T00:00:00.000Z"
-}
-```
-
-**Errors:** `404` user not found
-
----
-
 ### PUT `/users/me`
 
 🔒 Requires valid JWT. All fields are optional — only send what is changing.
@@ -404,10 +372,16 @@ Public profile. Safe to display to anyone.
 |---|---|---|
 | username | string | Max 50 characters, unique |
 
-**Response — `200 OK`**
+**Response — `200 OK`** — returns the full updated user profile
 ```json
 {
-  "message": "Profile updated successfully"
+  "id": "uuid",
+  "username": "newname",
+  "email": "player@example.com",
+  "google_id": null,
+  "role": "user",
+  "created_at": "2025-01-01T00:00:00.000Z",
+  "updated_at": "2025-01-01T00:00:00.000Z"
 }
 ```
 
@@ -459,7 +433,7 @@ The leaderboard is public — no login required to view it.
 |---|---|---|---|
 | GET | `/leaderboard` | No | Top 50 scores across all exercises |
 | GET | `/leaderboard/me/rank` | Yes 🔒 | Authenticated user's global ranking |
-| GET | `/leaderboard/:exercise_name` | No | Top 50 scores for a specific exercise |
+| GET | `/leaderboard/:exercise_name` | No | Top 50 scores for a specific exercise *(deferred — no frontend UI yet)* |
 
 > **Route order note:** `/leaderboard/me/rank` must be registered before `/leaderboard/:exercise_name`. Same reason as users — specific paths before parameterised paths.
 
@@ -504,7 +478,9 @@ The leaderboard is public — no login required to view it.
 
 ---
 
-### GET `/leaderboard/:exercise_name`
+### GET `/leaderboard/:exercise_name` *(deferred)*
+
+> No frontend UI exists for per-exercise leaderboard filtering yet. This endpoint will be built when the frontend needs it.
 
 Filters top 50 by exercise name (e.g. `/leaderboard/Squats`).
 

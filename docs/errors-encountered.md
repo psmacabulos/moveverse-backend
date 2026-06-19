@@ -1,4 +1,4 @@
-# MoveVerse Backend — Errors Encountered
+# Altus Backend — Errors Encountered
 
 A record of real errors hit during development and deployment. Each entry documents the environment, root cause, and resolution — written so the same mistake is never repeated twice.
 

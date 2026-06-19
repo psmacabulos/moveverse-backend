@@ -1,4 +1,4 @@
-# MoveVerse Backend — Learning Log
+# Altus Backend — Learning Log
 
 A personal record of concepts learned while building this project. Written for future reference — not documentation of what the code does, but why things work the way they do.
 
@@ -30,7 +30,7 @@ Each layer knows ONE thing and is ignorant of the rest:
 
 | Layer      | Its only job                                  | Must NOT do          |
 | ---------- | --------------------------------------------- | -------------------- |
-| routes     | "POST /api/v1/auth/register → handleRegister" | Any logic            |
+| routes     | "POST /v1/auth/register → handleRegister" | Any logic            |
 | controller | Unpack req, call service, pick status code    | SQL, business rules  |
 | service    | Decisions: "is this email taken? hash this"   | SQL, touch req/res   |
 | model      | Run parameterised SQL, return rows            | Logic, HTTP          |
@@ -645,7 +645,7 @@ So a client must prove who it is on **every request**. Two classic solutions:
 | Sessions | Server stores "token abc123 = user 42" in a table, looks it up on every request |
 | JWT      | Server hands the client a **signed note** at login; the note itself says who the user is |
 
-MoveVerse uses JWTs — no session storage or lookup needed, which suits a stateless deployment. The trade-off: a JWT cannot easily be revoked before it expires, which is why tokens get expiry times.
+Altus uses JWTs — no session storage or lookup needed, which suits a stateless deployment. The trade-off: a JWT cannot easily be revoked before it expires, which is why tokens get expiry times.
 
 ---
 
@@ -1242,7 +1242,7 @@ Both produce identical HTTP responses. Use `res.status()` — it's the universal
 Every HTTP request is a structured package with five parts. Express unpacks each one into a named property on `req`:
 
 ```
-POST /api/v1/auth/register HTTP/1.1
+POST /v1/auth/register HTTP/1.1
 Host: localhost:3000
 Content-Type: application/json
 Authorization: Bearer eyJhbGc...
@@ -1263,7 +1263,7 @@ Authorization: Bearer eyJhbGc...
 **2. URL / path** — where the request is going. Breaks into two sub-parts Express separates for you:
 
 ```
-/api/v1/users/abc-123?sort=desc
+/v1/users/abc-123?sort=desc
          └─────────┘ └────────┘
          req.params  req.query
 ```
@@ -1372,7 +1372,7 @@ Express does not enforce this — TypeScript does not catch it — it's a runtim
 
 **The business reason**
 
-A user on the MoveVerse app taps "Sign Up." The frontend sends `POST /api/v1/auth/register`. Express needs to know: "that URL + that method → call `handleRegister`." The routes file is the map that makes that connection. Without it, the controller functions you wrote exist in memory but are unreachable — like a business that has a phone but is not in the directory.
+A user on the Altus app taps "Sign Up." The frontend sends `POST /v1/auth/register`. Express needs to know: "that URL + that method → call `handleRegister`." The routes file is the map that makes that connection. Without it, the controller functions you wrote exist in memory but are unreachable — like a business that has a phone but is not in the directory.
 
 **What the routes file does**
 
@@ -1391,14 +1391,14 @@ That is the entire file. No logic, no SQL, no `req`, no `res`.
 
 ```typescript
 // index.ts
-app.use('/api/v1/auth', authRouter);
+app.use('/v1/auth', authRouter);
 ```
 
-The prefix `/api/v1/auth` lives in `index.ts`, not in the routes file. This matters: if the business bumps from v1 to v2, only `index.ts` changes — not every route file.
+The prefix `/v1/auth` lives in `index.ts`, not in the routes file. This matters: if the business bumps from v1 to v2, only `index.ts` changes — not every route file.
 
 Final paths the client sees:
-- `POST /api/v1/auth/register` → `handleRegister`
-- `POST /api/v1/auth/login` → `handleLogin`
+- `POST /v1/auth/register` → `handleRegister`
+- `POST /v1/auth/login` → `handleLogin`
 
 **What the routes layer must never do**
 
@@ -1412,7 +1412,7 @@ Final paths the client sees:
 
 When you write `router.post('/register', handleRegister)`, you are only defining the **suffix** — the part after whatever prefix the router is mounted at.
 
-The prefix (`/api/v1/auth`) is declared at mount time in `index.ts`:
+The prefix (`/v1/auth`) is declared at mount time in `index.ts`:
 
 ```typescript
 app.use('/auth', authRouter);
@@ -1420,10 +1420,10 @@ app.use('/auth', authRouter);
 
 **Why this split?**
 
-Imagine you have five route files: auth, users, workouts, movements, leaderboard. If the business decides everything should be under `/api/v1/`, you change **one line** in `index.ts`:
+Imagine you have five route files: auth, users, workouts, movements, leaderboard. If the business decides everything should be under `/v1/`, you change **one line** in `index.ts`:
 
 ```typescript
-app.use('/api/v1/auth', authRouter);
+app.use('/v1/auth', authRouter);
 ```
 
 Without this split, you would have to open every single routes file and edit the path prefix in each one. The routes file owns the suffix; `index.ts` owns the prefix. Change happens in one place.
@@ -1467,7 +1467,7 @@ GitHub and Twitter/X both use snake_case. PostgreSQL uses snake_case. If the bac
 
 If you choose camelCase for the API but snake_case in the DB, you need a transformation step somewhere — either in the service, the controller, or via a library like `humps`. This adds complexity and is another place for bugs to hide.
 
-**MoveVerse decision: snake_case throughout**
+**Altus decision: snake_case throughout**
 
 - DB columns: snake_case (PostgreSQL convention)
 - API responses: snake_case (matches DB directly — no transformation)
@@ -1477,7 +1477,7 @@ This means no transformation layer is needed anywhere. The DB row goes straight 
 
 **When you would reconsider this**
 
-If MoveVerse ever published a public API consumed by third-party developers — most of whom would be JavaScript developers — camelCase would be the better choice. At that point, add a transform at the controller layer (or use an ORM like Prisma that handles it automatically).
+If Altus ever published a public API consumed by third-party developers — most of whom would be JavaScript developers — camelCase would be the better choice. At that point, add a transform at the controller layer (or use an ORM like Prisma that handles it automatically).
 
 ---
 
@@ -1698,7 +1698,7 @@ This is the least obvious one. TypeScript treats files in one of two ways:
 **Anatomy of a curl command**
 
 ```bash
-curl -X POST http://localhost:5600/api/v1/auth/register \
+curl -X POST http://localhost:5600/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"player1","email":"player1@test.com","password":"password123"}'
 ```
@@ -1767,7 +1767,7 @@ The destructuring + underscore pattern is cleaner and more maintainable — espe
 
 Docker builds an image once and bakes all project files into it at that point. How changes reach the running container depends on whether the file is volume-mounted.
 
-**What is volume-mounted in MoveVerse:**
+**What is volume-mounted in Altus:**
 
 ```yaml
 volumes:
@@ -1802,7 +1802,7 @@ By default, curl only prints the response body. The status code (`200`, `401`, `
 **Add `-i` to include headers:**
 
 ```bash
-curl -i -X POST http://localhost:5600/api/v1/auth/login \
+curl -i -X POST http://localhost:5600/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"nobody@test.com","password":"password123"}'
 ```
@@ -1834,7 +1834,7 @@ Always verify both the status code **and** the body when testing an endpoint.
 
 For features that involve real-time feedback during a user action (a game, a live form, a timer), keep all real-time computation on the client. The backend is only called once — at the boundary when the action is complete.
 
-**MoveVerse example — workout session**
+**Altus example — workout session**
 
 ```
 During the game (client only — no network):
@@ -1842,7 +1842,7 @@ During the game (client only — no network):
   All of this is local. Zero backend calls. Zero latency.
 
 Session ends (one network call):
-  POST /api/v1/workout_sessions
+  POST /v1/workout_sessions
   { exercise_difficulty_id, reps_completed, duration_seconds }
         ↓
   Backend calculates score and calories independently
@@ -1868,3 +1868,149 @@ If the backend were called on every rep (to confirm or compute the score), each 
 | Source of truth for stored data | Always the backend's calculation |
 
 This pattern appears in many contexts beyond games: live search suggestions (client-side filter, backend only on submit), collaborative editors (local edits, server sync on save), shopping carts (local state, backend on checkout).
+
+---
+
+## Lesson 103 — What Docker volumes are and how Docker separates projects
+
+**What a volume actually is**
+
+A Docker container is throwaway — when it stops or is deleted, everything inside it is gone. That is intentional. But a database cannot be throwaway. Volumes solve this: a volume is a folder that lives **outside** the container, on the host machine, that the container reads and writes to.
+
+```
+Host machine
+  └── Docker-managed storage
+        └── postgres_data  ← volume (permanent)
+
+Postgres container (temporary)
+  └── /var/lib/postgresql/data  ← Docker mounts the volume here at startup
+```
+
+The container is the engine. The volume is the fuel tank. You can delete and recreate the engine — the tank stays.
+
+**How Docker keeps projects separate — automatic name prefixing**
+
+When you run `docker compose up`, Docker prefixes every volume name with the project folder name:
+
+```
+Declared in compose:         postgres_data
+Actual volume name created:  moveverse-backend_postgres_data
+```
+
+A second project with its own `postgres_data` declaration gets its own prefixed volume:
+
+```
+moveverse-backend_postgres_data   ← Altus data (folder name is still moveverse-backend)
+other-project_postgres_data       ← other project's data
+```
+
+They never overlap. Run `docker volume ls` to see all volumes on your machine.
+
+**Postgres versions across projects**
+
+Each `docker-compose.yml` specifies its own image version (`image: postgres:15-alpine`, `image: postgres:14`). Docker runs whichever version each project asks for, reading its own separate volume. As long as the projects use different host ports (5432 vs 5433 etc.) they can run simultaneously without conflict.
+
+---
+
+## Lesson 102 — Docker volumes survive image deletion — how to fully reset Postgres
+
+**The symptom**
+
+After deleting Docker images and running `docker compose up` again, Postgres throws:
+
+```
+password authentication failed for user "moveverse_user"
+```
+
+even though `.env` has the correct password.
+
+**Why it happens**
+
+Docker has three separate concepts that are deleted independently:
+
+| Docker thing | What it is | Deleted with image delete? |
+|---|---|---|
+| Image | The blueprint (the "recipe") | Yes |
+| Container | A running instance | No — needs `docker rm` |
+| Volume | Persistent storage | No — needs `docker volume rm` or `down -v` |
+
+The `docker-compose.yml` declares a named volume `postgres_data` mapped to `/var/lib/postgresql/data` inside the Postgres container. This volume holds all the database files, including the credentials set during first initialisation.
+
+When Postgres starts and finds the volume already contains data, it **skips initialisation entirely** — it will not re-read `POSTGRES_USER` / `POSTGRES_PASSWORD` from the environment. So the old credentials stay in the volume and no longer match the `.env` values.
+
+**The fix — delete the volume and let Postgres reinitialise**
+
+```bash
+docker compose down -v     # stops containers AND deletes named volumes
+docker compose up --build  # rebuilds images, Postgres initialises from scratch
+```
+
+Then re-run migrations and seed:
+
+```bash
+docker compose exec app npm run migrate
+docker compose exec app npm run seed
+```
+
+**The rule to remember**
+
+When resetting Docker from scratch, always use `down -v` — not just `down` or image deletion. `-v` is the flag that clears volumes.
+
+Each layer answers a different question, so each layer uses a different naming style.
+
+**The rule per layer:**
+
+| Layer | Naming pattern | Answers the question |
+|---|---|---|
+| Model | `verb + Noun` | "What does the SQL do?" |
+| Service | bare `verb` or `verb + Noun` | "What is the user trying to do?" |
+| Controller | `handle` + action | "What HTTP request am I handling?" |
+| Routes | no named functions | Just wires URL to controller |
+
+**Model — database language**
+
+Model function names describe the SQL operation:
+
+- `createUser` → INSERT INTO users
+- `findByEmail` → SELECT WHERE email = $1
+- `findById` → SELECT WHERE id = $1
+- `getAllExercises` → SELECT all rows from exercises JOIN difficulties
+- `createSession` → INSERT INTO workout_sessions
+
+Verbs to use: `create`, `find`, `getAll`, `update`, `delete`
+
+**Service — business language**
+
+Service function names describe the concept a non-technical person would recognise:
+
+- `register` → "I want to sign up"
+- `login` → "I want to log in"
+- `getExercises` → "I want to see exercises"
+- `saveSession` → "I want to save my workout"
+
+Re-read the user story. The main verb of the story becomes the service function name.
+
+**Controller — always prefixed with `handle`**
+
+Controller names mirror the service name, prefixed with `handle`:
+
+- `handleRegister`, `handleLogin`, `handleGetExercises`, `handleSaveSession`
+
+The `handle` prefix signals: this is an HTTP handler — it touches `req` and `res`. Nothing else uses this prefix.
+
+**Deriving names from the user story (the formula)**
+
+> "As a player, I want to see all exercises with their difficulty levels."
+
+1. Business action = **get exercises** → service: `getExercises()`
+2. DB action = select all rows → model: `getAllExercises()`
+3. HTTP handler = handling that GET request → controller: `handleGetExercises()`
+
+**Quick reference for Altus phases**
+
+| User story | Model | Service | Controller |
+|---|---|---|---|
+| "see all exercises" | `getAllExercises()` | `getExercises()` | `handleGetExercises()` |
+| "save a workout" | `createSession()` | `saveSession()` | `handleSaveSession()` |
+| "see my history" | `getSessionsByUser()` | `getWorkoutHistory()` | `handleGetMyHistory()` |
+| "view my profile" | `findById()` | `getProfile()` | `handleGetProfile()` |
