@@ -2014,3 +2014,143 @@ The `handle` prefix signals: this is an HTTP handler — it touches `req` and `r
 | "save a workout" | `createSession()` | `saveSession()` | `handleSaveSession()` |
 | "see my history" | `getSessionsByUser()` | `getWorkoutHistory()` | `handleGetMyHistory()` |
 | "view my profile" | `findById()` | `getProfile()` | `handleGetProfile()` |
+
+---
+
+## Lesson 104 — URL design: subdomain vs path prefix — when `/api/v1` becomes redundant
+
+When a backend API is served from a dedicated subdomain like `api.altus.games`, including `/api` in the path prefix is redundant:
+
+```
+api.altus.games/api/v1/exercises   ← "api" appears twice
+api.altus.games/v1/exercises       ← clean — subdomain already signals it's an API
+```
+
+The subdomain communicates the purpose (`api`). The path only needs to carry the version (`v1`) and the resource (`exercises`).
+
+**Real-world examples that follow this pattern:**
+- `api.stripe.com/v1/...`
+- `api.github.com/repos/...`
+
+**The rule:** If your subdomain is `api.*`, drop `/api` from the path prefix. Keep `/v1` for versioning.
+
+**For Altus:** `src/index.ts` mounts routes at `/v1/auth`, `/v1/exercises`, etc. — not `/api/v1/`. The production URL is `https://api.altus.games/v1/...`.
+
+---
+
+## Lesson 105 — Custom domains on Heroku: how DNS and CNAME records work
+
+**The problem:** By default your backend is at `moveverse-backend.herokuapp.com`. You want users (and the frontend) to reach it at `api.altus.games`.
+
+**How it works:**
+
+```
+User hits api.altus.games
+    ↓
+DNS looks up the CNAME record for api.altus.games
+    ↓
+CNAME says: go to xyz.herokudns.com
+    ↓
+Heroku receives request, checks which app owns api.altus.games
+    ↓
+Routes to your app → response sent back
+```
+
+You are not moving anything — you are adding a signpost in DNS.
+
+**Two steps required — both must be done:**
+
+1. **Tell Heroku** — Heroku must know your app owns that domain, otherwise it refuses the request even if DNS points there:
+   ```bash
+   heroku domains:add api.altus.games --app moveverse-backend
+   heroku domains:wait api.altus.games --app moveverse-backend
+   heroku domains --app moveverse-backend   # reveals the DNS target
+   ```
+
+2. **Tell DNS (name.com)** — Add a CNAME record so browsers know where to go:
+
+   | Field | Value |
+   |---|---|
+   | Type | CNAME |
+   | Host | `api` |
+   | Answer | the `.herokudns.com` target Heroku gave you |
+
+**Important:** You cannot edit a Heroku domain entry — only remove and re-add. If you get the domain wrong, run `heroku domains:remove` first, then `heroku domains:add` with the correct domain.
+
+**Verify DNS is live:**
+```bash
+nslookup api.altus.games
+```
+When this returns the Heroku address, DNS is propagating correctly.
+
+---
+
+## Lesson 106 — Heroku ACM: automatic SSL certificates for custom domains
+
+When you add a custom domain to Heroku, HTTPS does not work automatically. Heroku uses **Automated Certificate Management (ACM)** to issue a free SSL certificate — but it must be enabled first.
+
+**Symptom without ACM enabled:**
+```
+curl: (35) schannel: SEC_E_INTERNAL_ERROR — The Local Security Authority cannot be contacted
+```
+
+**Check ACM status:**
+```bash
+heroku certs:auto --app moveverse-backend
+```
+
+**Enable ACM:**
+```bash
+heroku certs:auto:enable --app moveverse-backend
+```
+
+After enabling, ACM provisions the certificate automatically once DNS is pointing correctly. It can take a few minutes. Status moves from `Waiting` → `OK`.
+
+**Why it requires DNS first:** ACM uses a domain validation challenge — it needs to confirm you actually control the domain before issuing a certificate. If DNS is not pointed at Heroku yet, the validation fails.
+
+---
+
+## Lesson 107 — Never rewrite pushed git history — fix forward with a new commit
+
+**The rule:** If a commit has already been pushed to a remote branch, do not amend it, reset it, or rebase it away. Fix the mistake in a new commit instead.
+
+**Why:** When you push a commit, teammates (or CI) may already have pulled it. Rewriting history changes the commit hash — their local history and the remote history diverge, causing conflicts that are painful to resolve.
+
+**What "rewriting history" means:**
+- `git commit --amend` after pushing
+- `git reset --hard HEAD~1` then force push
+- `git rebase -i` to squash/edit pushed commits
+
+**The safe approach — always:**
+```bash
+# Fix the files
+git add <files>
+git commit -m "fix: correct the mistake"
+git push
+```
+
+Two commits in history is fine. A clean, honest record of what happened is better than a falsified single commit.
+
+**Exception:** On your own private feature branch that nobody else has pulled, amending is acceptable. But when in doubt, fix forward.
+
+---
+
+## Lesson 108 — How to rename a git branch
+
+**Rename the branch you are currently on:**
+```bash
+git branch -m new-name
+```
+
+**Rename a branch you are NOT on:**
+```bash
+git branch -m old-name new-name
+```
+
+**After renaming, if the branch was already pushed:**
+```bash
+git push origin -u new-name        # push the renamed branch
+git push origin --delete old-name  # delete the old name from remote
+```
+
+**Convention used in this project:** `feat/` prefix for feature branches (e.g. `feat/exercises`, `feat/auth`). Not `feature/` — shorter and matches common team convention.

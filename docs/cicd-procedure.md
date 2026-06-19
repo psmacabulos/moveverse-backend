@@ -246,7 +246,7 @@ You only need to do this once. Migrations run automatically on every future depl
 
 After Steps 8 and 9 complete:
 
-1. Visit `https://api.altus.game/health`
+1. Visit `https://api.altus.games/health`
 2. Expected response: `{ "status": "ok" }`
 
 If you see that response, your app is live, the database is connected, and the seed data is in place.

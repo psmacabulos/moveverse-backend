@@ -3,7 +3,7 @@
 This document defines all HTTP endpoints exposed by the Altus backend, structured around the user journey.
 
 **Base URL (local):** `http://localhost:5600/v1`
-**Base URL (production):** `https://api.altus.game/v1`
+**Base URL (production):** `https://api.altus.games/v1`
 
 ---
 

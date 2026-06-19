@@ -168,7 +168,7 @@ See `docs/cicd-procedure.md` for the full step-by-step setup.
 - [x] Add `HEROKU_API_KEY` to GitHub Secrets
 - [x] Add deploy job to `ci.yml` (runs only on push to `main`, needs CI to pass)
 - [x] Set all config vars in Heroku dashboard
-- [x] Verify: push to `main` → Heroku deploys → `GET https://api.altus.game/health` responds
+- [x] Verify: push to `main` → Heroku deploys → `GET https://api.altus.games/health` responds
 
 ```
 From this point on, the workflow is:
