@@ -2154,3 +2154,247 @@ git push origin --delete old-name  # delete the old name from remote
 ```
 
 **Convention used in this project:** `feat/` prefix for feature branches (e.g. `feat/exercises`, `feat/auth`). Not `feature/` — shorter and matches common team convention.
+
+---
+
+## Lesson 114 — JWT payload: what you sign is what you get back
+
+**Signing a token**
+
+```typescript
+jwt.sign({ userId }, secret, { expiresIn: '7d' });
+```
+
+The first argument `{ userId }` is the **payload** — an object you choose. Whatever you put in here comes back when the token is decoded.
+
+**Verifying and reading the token**
+
+```typescript
+const decoded = jwt.verify(token, secret);
+// decoded = { userId: 'abc-123', iat: 1234567890, exp: 1235172690 }
+```
+
+`iat` (issued at) and `exp` (expiry) are added automatically by the library. You get them back alongside your own fields.
+
+**How this powers `req.user`**
+
+The middleware decodes the token on every protected request and attaches the payload to `req.user`. That is why every controller can read `req.user.userId` — it came from the token, not the request body.
+
+**What NOT to put in the payload**
+
+The JWT payload is NOT encrypted — it is base64 encoded, which anyone can decode. Never put passwords, full user objects, or sensitive data in it. Only put an ID — something useless without the database behind it.
+
+```
+jwt.sign({ userId })        ✅ — just an ID, meaningless alone
+jwt.sign({ user })          ❌ — leaks email, role, everything
+jwt.sign({ password })      ❌ — critical security vulnerability
+```
+
+---
+
+## Lesson 115 — Why jwt.sign() takes 3 arguments but jwt.verify() returns 1 object
+
+**Signing takes three separate arguments:**
+
+```typescript
+jwt.sign(
+  { userId },          // 1. the payload — your data
+  secret,              // 2. the signing key — proves authenticity
+  { expiresIn: '7d' } // 3. options — controls token behaviour
+)
+```
+
+These are separate for convenience. Under the hood, the library merges `expiresIn` into the payload as `exp` (a Unix timestamp) and uses the secret to generate a signature. The secret never enters the payload.
+
+**A JWT has three parts separated by dots:**
+
+```
+header . payload . signature
+  ↑         ↑         ↑
+algorithm  your     cryptographic proof
+           data     the token wasn't tampered with
+           + iat    (uses the secret — never readable)
+           + exp
+```
+
+**Decoding returns one flat object — the payload section only:**
+
+```typescript
+{ userId: 'abc-123', iat: 1234567890, exp: 1235172690 }
+```
+
+`iat` and `exp` appear here because the library added them to the payload before sealing the token. The secret never comes back — it was used to create the signature, not stored in the payload.
+
+**The rule:** `jwt.sign()` takes 3 arguments as a convenient API. Inside the token there is always one JSON object. The secret lives only in your server's environment — never in the token.
+
+---
+
+## Lesson 109 — SQL JOINs: combining two tables in one query
+
+**Why JOINs exist**
+
+Data in a relational database is split across tables to avoid repetition. A `JOIN` combines rows from two tables into one result set wherever a condition is true — used when the API response needs data from more than one table at once.
+
+**The syntax**
+
+```sql
+SELECT
+  e.id    AS exercise_id,
+  e.name,
+  ed.id   AS difficulty_id,
+  ed.level_name
+FROM exercises e
+JOIN exercise_difficulties ed ON ed.exercise_id = e.id
+WHERE e.is_active = true
+ORDER BY e.name, ed.level_name
+```
+
+| Part | What it does |
+|---|---|
+| `FROM exercises e` | Start with the exercises table, alias it `e` |
+| `JOIN exercise_difficulties ed` | Bring in difficulties, alias `ed` |
+| `ON ed.exercise_id = e.id` | The link condition — only combine rows where the difficulty belongs to that exercise |
+| `AS exercise_id` | Alias a column name — needed when both tables have an `id` column to avoid a clash |
+
+**What the result looks like**
+
+The JOIN returns FLAT rows — one row per difficulty, exercise data repeated:
+
+```
+exercise_id | name    | difficulty_id | level_name
+1           | Squats  | a             | Easy
+1           | Squats  | b             | Medium
+1           | Squats  | c             | Hard
+2           | Pushups | d             | Easy
+```
+
+This is expected. The model's job is to reshape these flat rows into nested objects after the query.
+
+---
+
+## Lesson 110 — How to plan interfaces in a model (the 3-interface rule)
+
+Before writing any function in a model, define your interfaces first. Always start from two questions:
+
+**1. What does the SQL return?** → raw row interface
+**2. What does the caller need back?** → output interface(s)
+
+For a JOIN query that needs nested output, you always need 3 interfaces:
+
+| Interface | Answers | Where to look |
+|---|---|---|
+| Raw row | What does one flat SQL row look like? | Your SELECT column list |
+| Nested child | What is inside the nested array? | API spec response |
+| Parent with array | What does the final output object look like? | API spec response |
+
+**Applied to exercises:**
+
+```typescript
+interface ExerciseRow {       // raw SQL row — mirrors SELECT list exactly
+  exercise_id: string;
+  name: string;
+  difficulty_id: string;
+  level_name: string;
+  ...
+}
+
+interface Difficulty {        // one item inside the nested array
+  id: string;
+  level_name: string;
+  target_reps: number;
+  score_multiplier: number;
+}
+
+interface Exercise {          // the final output shape
+  id: string;
+  name: string;
+  difficulties: Difficulty[];
+}
+```
+
+**The rule:** Write interfaces BEFORE writing the function. Once the interfaces are right, the function logic follows naturally.
+
+---
+
+## Lesson 111 — `Record<K, V>`: TypeScript's type for objects with dynamic keys
+
+`Record<K, V>` is a TypeScript built-in utility type. It describes an object where:
+- Every **key** is of type `K`
+- Every **value** is of type `V`
+- The exact keys are not known in advance
+
+```typescript
+const exerciseMap: Record<string, Exercise> = {};
+```
+
+This tells TypeScript: "this object will have string keys (exercise IDs) and Exercise values." At runtime it is just `{}`.
+
+**Why not just use `{}`?**
+
+Plain `{}` tells TypeScript nothing about what goes in the object. TypeScript would not know what type `exerciseMap['some-id']` is, and would not catch mistakes when you access or assign properties.
+
+**Equivalent syntax** — these mean the same thing:
+```typescript
+Record<string, Exercise>
+{ [key: string]: Exercise }   // index signature — older style
+```
+
+`Record` is preferred — shorter and more readable.
+
+---
+
+## Lesson 112 — `console.log` depth limit: why nested objects show as `[Object]`
+
+**The symptom**
+
+```
+[ { id: '1', name: 'Squats', difficulties: [ [Object], [Object] ] } ]
+```
+
+`difficulties` shows `[Object]` instead of the actual data.
+
+**Why it happens**
+
+`console.log` only expands objects to 2 levels deep by default. The `difficulties` array is at level 3 — so Node.js collapses it to `[Object]` rather than printing it fully.
+
+**The fix — use `JSON.stringify` for debugging nested structures**
+
+```typescript
+console.log(JSON.stringify(result, null, 2));
+```
+
+`JSON.stringify(value, null, 2)` converts the full object to a JSON string with 2-space indentation — no depth limit, everything visible.
+
+Remove `JSON.stringify` debug lines before committing. They are for development only.
+
+---
+
+## Lesson 113 — Loop logic bug: push inside `if` vs outside `if`
+
+**The bug**
+
+```typescript
+if (!exerciseMap[row.exercise_id]) {
+  exerciseMap[row.exercise_id] = { ..., difficulties: [] };
+  exerciseMap[row.exercise_id].difficulties.push(...);  // ← inside the if
+}
+```
+
+The push is inside the `if` block — it only runs when the exercise is seen for the **first time**. On the second and third rows (Medium, Hard difficulties), the exercise already exists so the `if` is false — the push never runs. Result: only the first difficulty appears.
+
+**The fix — push outside the `if`**
+
+```typescript
+if (!exerciseMap[row.exercise_id]) {
+  exerciseMap[row.exercise_id] = { ..., difficulties: [] };
+  // only create the entry here — do NOT push here
+}
+
+// always runs — for every row, new exercise or existing
+exerciseMap[row.exercise_id].difficulties.push(...);
+```
+
+**The mental model**
+
+The `if` block answers: *"does this exercise exist yet?"* — create it if not.
+The push answers: *"add this difficulty to whichever exercise this row belongs to."* — always happens.

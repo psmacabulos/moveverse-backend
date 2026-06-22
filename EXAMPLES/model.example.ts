@@ -132,10 +132,92 @@ const findById = async (id: string): Promise<SafeMember | null> => {
 };
 
 // ---------------------------------------------------------------------------
-// STEP 5 — EXPORTS
+// STEP 5 — GET ALL WITH A JOIN (reshaping flat rows into nested objects)
+// ---------------------------------------------------------------------------
+//
+// Imagine the library also has a "books" table and a "book_genres" table:
+//
+//   books:        id | title       | author
+//   book_genres:  id | book_id | genre_name
+//
+// A book can have many genres. The SQL JOIN returns FLAT rows:
+//
+//   { book_id: '1', title: 'Dune', genre_id: 'a', genre_name: 'Sci-Fi'   }
+//   { book_id: '1', title: 'Dune', genre_id: 'b', genre_name: 'Classic'  }
+//   { book_id: '2', title: '1984', genre_id: 'c', genre_name: 'Dystopia' }
+//
+// But the API needs NESTED output:
+//   [ { id: '1', title: 'Dune', genres: [{...}, {...}] }, ... ]
+//
+// The model's job: run the JOIN, then reshape flat → nested before returning.
+
+interface Genre {
+  id: string;
+  genre_name: string;
+}
+
+interface Book {
+  id: string;
+  title: string;
+  author: string;
+  genres: Genre[];
+}
+
+// The raw shape of ONE row coming back from the JOIN query.
+// We use this as the type hint inside the loop — not in the return type.
+interface BookRow {
+  book_id: string;
+  title: string;
+  author: string;
+  genre_id: string;
+  genre_name: string;
+}
+
+const getAllBooks = async (): Promise<Book[]> => {
+  const result = await pool.query<BookRow>(
+    `SELECT
+       b.id          AS book_id,
+       b.title,
+       b.author,
+       bg.id         AS genre_id,
+       bg.genre_name
+     FROM books b
+     JOIN book_genres bg ON bg.book_id = b.id
+     ORDER BY b.title, bg.genre_name`
+  );
+
+  // RESHAPING: flat rows → nested objects.
+  // The key insight: use an object (map) keyed by book_id to group rows.
+  // An object lookup (bookMap[row.book_id]) is O(1) — no nested loops needed.
+  const bookMap: Record<string, Book> = {};
+
+  for (const row of result.rows) {
+    if (!bookMap[row.book_id]) {
+      // First time we see this book — create its entry with an empty genres array
+      bookMap[row.book_id] = {
+        id: row.book_id,
+        title: row.title,
+        author: row.author,
+        genres: [],
+      };
+    }
+
+    // Whether new or existing — always push this row's genre into the array
+    bookMap[row.book_id].genres.push({
+      id: row.genre_id,
+      genre_name: row.genre_name,
+    });
+  }
+
+  // Object.values() turns { '1': {...}, '2': {...} } into [ {...}, {...} ]
+  return Object.values(bookMap);
+};
+
+// ---------------------------------------------------------------------------
+// STEP 6 — EXPORTS
 // ---------------------------------------------------------------------------
 
-export { Member, SafeMember, createMember, findByEmail, findById };
+export { Member, SafeMember, createMember, findByEmail, findById, getAllBooks };
 
 // =============================================================
 // WHAT THIS LAYER DOES NOT DO
