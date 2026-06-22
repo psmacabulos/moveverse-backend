@@ -24,7 +24,7 @@ const createUser = async ({
   email,
   passwordHash,
 }: CreateUserInput): Promise<SafeUser> => {
-  const result = await pool.query(
+  const result = await pool.query<User>(
     `INSERT INTO users (username, email, password_hash)
         VALUES ($1, $2, $3)
         RETURNING  id, username, email, google_id, role, created_at, updated_at`,

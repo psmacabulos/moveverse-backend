@@ -1,4 +1,4 @@
-# MoveVerse Backend — Learning Log
+# Altus Backend — Learning Log
 
 A personal record of concepts learned while building this project. Written for future reference — not documentation of what the code does, but why things work the way they do.
 
@@ -30,7 +30,7 @@ Each layer knows ONE thing and is ignorant of the rest:
 
 | Layer      | Its only job                                  | Must NOT do          |
 | ---------- | --------------------------------------------- | -------------------- |
-| routes     | "POST /api/v1/auth/register → handleRegister" | Any logic            |
+| routes     | "POST /v1/auth/register → handleRegister" | Any logic            |
 | controller | Unpack req, call service, pick status code    | SQL, business rules  |
 | service    | Decisions: "is this email taken? hash this"   | SQL, touch req/res   |
 | model      | Run parameterised SQL, return rows            | Logic, HTTP          |
@@ -378,7 +378,25 @@ const folder = path.join(process.cwd(), 'src', 'db', 'migrations');
 const files = fs.readdirSync(folder);
 ```
 
-`path.join()` builds a file path correctly on any OS (handles `/` vs `\` differences). `fs.readdirSync()` reads all files in a folder.
+`path.join()` builds a file path correctly on any OS (handles `/` vs `\` differences). `fs.readdirSync()` reads all files in a folder and returns the result immediately — this is the synchronous version.
+
+**`readdirSync` vs `readdir` (async)**
+
+Node.js provides two versions of most file system operations:
+
+```typescript
+// Synchronous — blocks the thread until done, returns result directly
+const files = fs.readdirSync(folder);
+
+// Asynchronous — non-blocking, result arrives via Promise
+const files = await fs.promises.readdir(folder);
+```
+
+`readdirSync` is safe here because `migrate.ts` is a script that runs once and exits — there is no server, no incoming requests, nothing else to do while waiting. Blocking is fine.
+
+Inside an Express route handler or service, you must never use sync file operations — blocking the thread freezes every other request the server is handling. In a running server, always use `await fs.promises.readdir(...)`.
+
+**The rule:** scripts that run once and exit → sync is fine. Inside a running server → always async.
 
 ---
 
@@ -627,7 +645,7 @@ So a client must prove who it is on **every request**. Two classic solutions:
 | Sessions | Server stores "token abc123 = user 42" in a table, looks it up on every request |
 | JWT      | Server hands the client a **signed note** at login; the note itself says who the user is |
 
-MoveVerse uses JWTs — no session storage or lookup needed, which suits a stateless deployment. The trade-off: a JWT cannot easily be revoked before it expires, which is why tokens get expiry times.
+Altus uses JWTs — no session storage or lookup needed, which suits a stateless deployment. The trade-off: a JWT cannot easily be revoked before it expires, which is why tokens get expiry times.
 
 ---
 
@@ -1224,7 +1242,7 @@ Both produce identical HTTP responses. Use `res.status()` — it's the universal
 Every HTTP request is a structured package with five parts. Express unpacks each one into a named property on `req`:
 
 ```
-POST /api/v1/auth/register HTTP/1.1
+POST /v1/auth/register HTTP/1.1
 Host: localhost:3000
 Content-Type: application/json
 Authorization: Bearer eyJhbGc...
@@ -1245,7 +1263,7 @@ Authorization: Bearer eyJhbGc...
 **2. URL / path** — where the request is going. Breaks into two sub-parts Express separates for you:
 
 ```
-/api/v1/users/abc-123?sort=desc
+/v1/users/abc-123?sort=desc
          └─────────┘ └────────┘
          req.params  req.query
 ```
@@ -1354,7 +1372,7 @@ Express does not enforce this — TypeScript does not catch it — it's a runtim
 
 **The business reason**
 
-A user on the MoveVerse app taps "Sign Up." The frontend sends `POST /api/v1/auth/register`. Express needs to know: "that URL + that method → call `handleRegister`." The routes file is the map that makes that connection. Without it, the controller functions you wrote exist in memory but are unreachable — like a business that has a phone but is not in the directory.
+A user on the Altus app taps "Sign Up." The frontend sends `POST /v1/auth/register`. Express needs to know: "that URL + that method → call `handleRegister`." The routes file is the map that makes that connection. Without it, the controller functions you wrote exist in memory but are unreachable — like a business that has a phone but is not in the directory.
 
 **What the routes file does**
 
@@ -1373,14 +1391,14 @@ That is the entire file. No logic, no SQL, no `req`, no `res`.
 
 ```typescript
 // index.ts
-app.use('/api/v1/auth', authRouter);
+app.use('/v1/auth', authRouter);
 ```
 
-The prefix `/api/v1/auth` lives in `index.ts`, not in the routes file. This matters: if the business bumps from v1 to v2, only `index.ts` changes — not every route file.
+The prefix `/v1/auth` lives in `index.ts`, not in the routes file. This matters: if the business bumps from v1 to v2, only `index.ts` changes — not every route file.
 
 Final paths the client sees:
-- `POST /api/v1/auth/register` → `handleRegister`
-- `POST /api/v1/auth/login` → `handleLogin`
+- `POST /v1/auth/register` → `handleRegister`
+- `POST /v1/auth/login` → `handleLogin`
 
 **What the routes layer must never do**
 
@@ -1394,7 +1412,7 @@ Final paths the client sees:
 
 When you write `router.post('/register', handleRegister)`, you are only defining the **suffix** — the part after whatever prefix the router is mounted at.
 
-The prefix (`/api/v1/auth`) is declared at mount time in `index.ts`:
+The prefix (`/v1/auth`) is declared at mount time in `index.ts`:
 
 ```typescript
 app.use('/auth', authRouter);
@@ -1402,10 +1420,10 @@ app.use('/auth', authRouter);
 
 **Why this split?**
 
-Imagine you have five route files: auth, users, workouts, movements, leaderboard. If the business decides everything should be under `/api/v1/`, you change **one line** in `index.ts`:
+Imagine you have five route files: auth, users, workouts, movements, leaderboard. If the business decides everything should be under `/v1/`, you change **one line** in `index.ts`:
 
 ```typescript
-app.use('/api/v1/auth', authRouter);
+app.use('/v1/auth', authRouter);
 ```
 
 Without this split, you would have to open every single routes file and edit the path prefix in each one. The routes file owns the suffix; `index.ts` owns the prefix. Change happens in one place.
@@ -1449,7 +1467,7 @@ GitHub and Twitter/X both use snake_case. PostgreSQL uses snake_case. If the bac
 
 If you choose camelCase for the API but snake_case in the DB, you need a transformation step somewhere — either in the service, the controller, or via a library like `humps`. This adds complexity and is another place for bugs to hide.
 
-**MoveVerse decision: snake_case throughout**
+**Altus decision: snake_case throughout**
 
 - DB columns: snake_case (PostgreSQL convention)
 - API responses: snake_case (matches DB directly — no transformation)
@@ -1459,7 +1477,7 @@ This means no transformation layer is needed anywhere. The DB row goes straight 
 
 **When you would reconsider this**
 
-If MoveVerse ever published a public API consumed by third-party developers — most of whom would be JavaScript developers — camelCase would be the better choice. At that point, add a transform at the controller layer (or use an ORM like Prisma that handles it automatically).
+If Altus ever published a public API consumed by third-party developers — most of whom would be JavaScript developers — camelCase would be the better choice. At that point, add a transform at the controller layer (or use an ORM like Prisma that handles it automatically).
 
 ---
 
@@ -1680,7 +1698,7 @@ This is the least obvious one. TypeScript treats files in one of two ways:
 **Anatomy of a curl command**
 
 ```bash
-curl -X POST http://localhost:5600/api/v1/auth/register \
+curl -X POST http://localhost:5600/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"player1","email":"player1@test.com","password":"password123"}'
 ```
@@ -1710,10 +1728,6 @@ The body contains double quotes. If you wrap the whole thing in double quotes, t
 - **Unit test** — tests one function in isolation, no database or HTTP involved. Faster but narrower — only proves that one function behaves correctly, not that all the layers connect correctly.
 
 curl commands are always integration tests.
-
----
-
-## Lesson 97 — The underscore prefix convention for intentionally unused variables
 
 ---
 
@@ -1753,7 +1767,7 @@ The destructuring + underscore pattern is cleaner and more maintainable — espe
 
 Docker builds an image once and bakes all project files into it at that point. How changes reach the running container depends on whether the file is volume-mounted.
 
-**What is volume-mounted in MoveVerse:**
+**What is volume-mounted in Altus:**
 
 ```yaml
 volumes:
@@ -1788,7 +1802,7 @@ By default, curl only prints the response body. The status code (`200`, `401`, `
 **Add `-i` to include headers:**
 
 ```bash
-curl -i -X POST http://localhost:5600/api/v1/auth/login \
+curl -i -X POST http://localhost:5600/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"nobody@test.com","password":"password123"}'
 ```
@@ -1811,3 +1825,643 @@ The body alone is not enough to verify a test. Two different scenarios could ret
 - `403` — authenticated but not allowed (valid token, wrong role)
 
 Always verify both the status code **and** the body when testing an endpoint.
+
+---
+
+## Lesson 100 — Real-time stays on the client; the backend is called once at the boundary
+
+**The pattern**
+
+For features that involve real-time feedback during a user action (a game, a live form, a timer), keep all real-time computation on the client. The backend is only called once — at the boundary when the action is complete.
+
+**Altus example — workout session**
+
+```
+During the game (client only — no network):
+  MediaPipe detects a rep → game event fires → score increments on screen
+  All of this is local. Zero backend calls. Zero latency.
+
+Session ends (one network call):
+  POST /v1/workout_sessions
+  { exercise_difficulty_id, reps_completed, duration_seconds }
+        ↓
+  Backend calculates score and calories independently
+  Saves to DB, returns authoritative result
+```
+
+**Why the backend never receives a score from the frontend**
+
+The frontend calculates a local score for display only. The backend recalculates it independently using `reps_completed × score_multiplier`. The backend's number is what gets stored — the frontend's number is discarded.
+
+This prevents score manipulation: a tampered request body cannot corrupt the stored score because the backend never reads a client-sent score. It derives the score itself from the raw inputs.
+
+**Why this pattern avoids latency during gameplay**
+
+If the backend were called on every rep (to confirm or compute the score), each rep would require a round-trip network call — typically 50–300ms. On a fast-paced game at 1 rep per second, this creates visible lag and freezes. The pattern avoids this entirely by keeping the game loop local and deferring all backend work until the session is over.
+
+**The general rule**
+
+| What | Where |
+|---|---|
+| Real-time feedback (score, timer, animation) | Client — no network |
+| Persistence and validation | Backend — called once at the boundary |
+| Source of truth for stored data | Always the backend's calculation |
+
+This pattern appears in many contexts beyond games: live search suggestions (client-side filter, backend only on submit), collaborative editors (local edits, server sync on save), shopping carts (local state, backend on checkout).
+
+---
+
+## Lesson 103 — What Docker volumes are and how Docker separates projects
+
+**What a volume actually is**
+
+A Docker container is throwaway — when it stops or is deleted, everything inside it is gone. That is intentional. But a database cannot be throwaway. Volumes solve this: a volume is a folder that lives **outside** the container, on the host machine, that the container reads and writes to.
+
+```
+Host machine
+  └── Docker-managed storage
+        └── postgres_data  ← volume (permanent)
+
+Postgres container (temporary)
+  └── /var/lib/postgresql/data  ← Docker mounts the volume here at startup
+```
+
+The container is the engine. The volume is the fuel tank. You can delete and recreate the engine — the tank stays.
+
+**How Docker keeps projects separate — automatic name prefixing**
+
+When you run `docker compose up`, Docker prefixes every volume name with the project folder name:
+
+```
+Declared in compose:         postgres_data
+Actual volume name created:  moveverse-backend_postgres_data
+```
+
+A second project with its own `postgres_data` declaration gets its own prefixed volume:
+
+```
+moveverse-backend_postgres_data   ← Altus data (folder name is still moveverse-backend)
+other-project_postgres_data       ← other project's data
+```
+
+They never overlap. Run `docker volume ls` to see all volumes on your machine.
+
+**Postgres versions across projects**
+
+Each `docker-compose.yml` specifies its own image version (`image: postgres:15-alpine`, `image: postgres:14`). Docker runs whichever version each project asks for, reading its own separate volume. As long as the projects use different host ports (5432 vs 5433 etc.) they can run simultaneously without conflict.
+
+---
+
+## Lesson 102 — Docker volumes survive image deletion — how to fully reset Postgres
+
+**The symptom**
+
+After deleting Docker images and running `docker compose up` again, Postgres throws:
+
+```
+password authentication failed for user "moveverse_user"
+```
+
+even though `.env` has the correct password.
+
+**Why it happens**
+
+Docker has three separate concepts that are deleted independently:
+
+| Docker thing | What it is | Deleted with image delete? |
+|---|---|---|
+| Image | The blueprint (the "recipe") | Yes |
+| Container | A running instance | No — needs `docker rm` |
+| Volume | Persistent storage | No — needs `docker volume rm` or `down -v` |
+
+The `docker-compose.yml` declares a named volume `postgres_data` mapped to `/var/lib/postgresql/data` inside the Postgres container. This volume holds all the database files, including the credentials set during first initialisation.
+
+When Postgres starts and finds the volume already contains data, it **skips initialisation entirely** — it will not re-read `POSTGRES_USER` / `POSTGRES_PASSWORD` from the environment. So the old credentials stay in the volume and no longer match the `.env` values.
+
+**The fix — delete the volume and let Postgres reinitialise**
+
+```bash
+docker compose down -v     # stops containers AND deletes named volumes
+docker compose up --build  # rebuilds images, Postgres initialises from scratch
+```
+
+Then re-run migrations and seed:
+
+```bash
+docker compose exec app npm run migrate
+docker compose exec app npm run seed
+```
+
+**The rule to remember**
+
+When resetting Docker from scratch, always use `down -v` — not just `down` or image deletion. `-v` is the flag that clears volumes.
+
+Each layer answers a different question, so each layer uses a different naming style.
+
+**The rule per layer:**
+
+| Layer | Naming pattern | Answers the question |
+|---|---|---|
+| Model | `verb + Noun` | "What does the SQL do?" |
+| Service | bare `verb` or `verb + Noun` | "What is the user trying to do?" |
+| Controller | `handle` + action | "What HTTP request am I handling?" |
+| Routes | no named functions | Just wires URL to controller |
+
+**Model — database language**
+
+Model function names describe the SQL operation:
+
+- `createUser` → INSERT INTO users
+- `findByEmail` → SELECT WHERE email = $1
+- `findById` → SELECT WHERE id = $1
+- `getAllExercises` → SELECT all rows from exercises JOIN difficulties
+- `createSession` → INSERT INTO workout_sessions
+
+Verbs to use: `create`, `find`, `getAll`, `update`, `delete`
+
+**Service — business language**
+
+Service function names describe the concept a non-technical person would recognise:
+
+- `register` → "I want to sign up"
+- `login` → "I want to log in"
+- `getExercises` → "I want to see exercises"
+- `saveSession` → "I want to save my workout"
+
+Re-read the user story. The main verb of the story becomes the service function name.
+
+**Controller — always prefixed with `handle`**
+
+Controller names mirror the service name, prefixed with `handle`:
+
+- `handleRegister`, `handleLogin`, `handleGetExercises`, `handleSaveSession`
+
+The `handle` prefix signals: this is an HTTP handler — it touches `req` and `res`. Nothing else uses this prefix.
+
+**Deriving names from the user story (the formula)**
+
+> "As a player, I want to see all exercises with their difficulty levels."
+
+1. Business action = **get exercises** → service: `getExercises()`
+2. DB action = select all rows → model: `getAllExercises()`
+3. HTTP handler = handling that GET request → controller: `handleGetExercises()`
+
+**Quick reference for Altus phases**
+
+| User story | Model | Service | Controller |
+|---|---|---|---|
+| "see all exercises" | `getAllExercises()` | `getExercises()` | `handleGetExercises()` |
+| "save a workout" | `createSession()` | `saveSession()` | `handleSaveSession()` |
+| "see my history" | `getSessionsByUser()` | `getWorkoutHistory()` | `handleGetMyHistory()` |
+| "view my profile" | `findById()` | `getProfile()` | `handleGetProfile()` |
+
+---
+
+## Lesson 104 — URL design: subdomain vs path prefix — when `/api/v1` becomes redundant
+
+When a backend API is served from a dedicated subdomain like `api.altus.games`, including `/api` in the path prefix is redundant:
+
+```
+api.altus.games/api/v1/exercises   ← "api" appears twice
+api.altus.games/v1/exercises       ← clean — subdomain already signals it's an API
+```
+
+The subdomain communicates the purpose (`api`). The path only needs to carry the version (`v1`) and the resource (`exercises`).
+
+**Real-world examples that follow this pattern:**
+- `api.stripe.com/v1/...`
+- `api.github.com/repos/...`
+
+**The rule:** If your subdomain is `api.*`, drop `/api` from the path prefix. Keep `/v1` for versioning.
+
+**For Altus:** `src/index.ts` mounts routes at `/v1/auth`, `/v1/exercises`, etc. — not `/api/v1/`. The production URL is `https://api.altus.games/v1/...`.
+
+---
+
+## Lesson 105 — Custom domains on Heroku: how DNS and CNAME records work
+
+**The problem:** By default your backend is at `moveverse-backend.herokuapp.com`. You want users (and the frontend) to reach it at `api.altus.games`.
+
+**How it works:**
+
+```
+User hits api.altus.games
+    ↓
+DNS looks up the CNAME record for api.altus.games
+    ↓
+CNAME says: go to xyz.herokudns.com
+    ↓
+Heroku receives request, checks which app owns api.altus.games
+    ↓
+Routes to your app → response sent back
+```
+
+You are not moving anything — you are adding a signpost in DNS.
+
+**Two steps required — both must be done:**
+
+1. **Tell Heroku** — Heroku must know your app owns that domain, otherwise it refuses the request even if DNS points there:
+   ```bash
+   heroku domains:add api.altus.games --app moveverse-backend
+   heroku domains:wait api.altus.games --app moveverse-backend
+   heroku domains --app moveverse-backend   # reveals the DNS target
+   ```
+
+2. **Tell DNS (name.com)** — Add a CNAME record so browsers know where to go:
+
+   | Field | Value |
+   |---|---|
+   | Type | CNAME |
+   | Host | `api` |
+   | Answer | the `.herokudns.com` target Heroku gave you |
+
+**Important:** You cannot edit a Heroku domain entry — only remove and re-add. If you get the domain wrong, run `heroku domains:remove` first, then `heroku domains:add` with the correct domain.
+
+**Verify DNS is live:**
+```bash
+nslookup api.altus.games
+```
+When this returns the Heroku address, DNS is propagating correctly.
+
+---
+
+## Lesson 106 — Heroku ACM: automatic SSL certificates for custom domains
+
+When you add a custom domain to Heroku, HTTPS does not work automatically. Heroku uses **Automated Certificate Management (ACM)** to issue a free SSL certificate — but it must be enabled first.
+
+**Symptom without ACM enabled:**
+```
+curl: (35) schannel: SEC_E_INTERNAL_ERROR — The Local Security Authority cannot be contacted
+```
+
+**Check ACM status:**
+```bash
+heroku certs:auto --app moveverse-backend
+```
+
+**Enable ACM:**
+```bash
+heroku certs:auto:enable --app moveverse-backend
+```
+
+After enabling, ACM provisions the certificate automatically once DNS is pointing correctly. It can take a few minutes. Status moves from `Waiting` → `OK`.
+
+**Why it requires DNS first:** ACM uses a domain validation challenge — it needs to confirm you actually control the domain before issuing a certificate. If DNS is not pointed at Heroku yet, the validation fails.
+
+---
+
+## Lesson 107 — Never rewrite pushed git history — fix forward with a new commit
+
+**The rule:** If a commit has already been pushed to a remote branch, do not amend it, reset it, or rebase it away. Fix the mistake in a new commit instead.
+
+**Why:** When you push a commit, teammates (or CI) may already have pulled it. Rewriting history changes the commit hash — their local history and the remote history diverge, causing conflicts that are painful to resolve.
+
+**What "rewriting history" means:**
+- `git commit --amend` after pushing
+- `git reset --hard HEAD~1` then force push
+- `git rebase -i` to squash/edit pushed commits
+
+**The safe approach — always:**
+```bash
+# Fix the files
+git add <files>
+git commit -m "fix: correct the mistake"
+git push
+```
+
+Two commits in history is fine. A clean, honest record of what happened is better than a falsified single commit.
+
+**Exception:** On your own private feature branch that nobody else has pulled, amending is acceptable. But when in doubt, fix forward.
+
+---
+
+## Lesson 108 — How to rename a git branch
+
+**Rename the branch you are currently on:**
+```bash
+git branch -m new-name
+```
+
+**Rename a branch you are NOT on:**
+```bash
+git branch -m old-name new-name
+```
+
+**After renaming, if the branch was already pushed:**
+```bash
+git push origin -u new-name        # push the renamed branch
+git push origin --delete old-name  # delete the old name from remote
+```
+
+**Convention used in this project:** `feat/` prefix for feature branches (e.g. `feat/exercises`, `feat/auth`). Not `feature/` — shorter and matches common team convention.
+
+---
+
+## Lesson 114 — JWT payload: what you sign is what you get back
+
+**Signing a token**
+
+```typescript
+jwt.sign({ userId }, secret, { expiresIn: '7d' });
+```
+
+The first argument `{ userId }` is the **payload** — an object you choose. Whatever you put in here comes back when the token is decoded.
+
+**Verifying and reading the token**
+
+```typescript
+const decoded = jwt.verify(token, secret);
+// decoded = { userId: 'abc-123', iat: 1234567890, exp: 1235172690 }
+```
+
+`iat` (issued at) and `exp` (expiry) are added automatically by the library. You get them back alongside your own fields.
+
+**How this powers `req.user`**
+
+The middleware decodes the token on every protected request and attaches the payload to `req.user`. That is why every controller can read `req.user.userId` — it came from the token, not the request body.
+
+**What NOT to put in the payload**
+
+The JWT payload is NOT encrypted — it is base64 encoded, which anyone can decode. Never put passwords, full user objects, or sensitive data in it. Only put an ID — something useless without the database behind it.
+
+```
+jwt.sign({ userId })        ✅ — just an ID, meaningless alone
+jwt.sign({ user })          ❌ — leaks email, role, everything
+jwt.sign({ password })      ❌ — critical security vulnerability
+```
+
+---
+
+## Lesson 115 — Why jwt.sign() takes 3 arguments but jwt.verify() returns 1 object
+
+**Signing takes three separate arguments:**
+
+```typescript
+jwt.sign(
+  { userId },          // 1. the payload — your data
+  secret,              // 2. the signing key — proves authenticity
+  { expiresIn: '7d' } // 3. options — controls token behaviour
+)
+```
+
+These are separate for convenience. Under the hood, the library merges `expiresIn` into the payload as `exp` (a Unix timestamp) and uses the secret to generate a signature. The secret never enters the payload.
+
+**A JWT has three parts separated by dots:**
+
+```
+header . payload . signature
+  ↑         ↑         ↑
+algorithm  your     cryptographic proof
+           data     the token wasn't tampered with
+           + iat    (uses the secret — never readable)
+           + exp
+```
+
+**Decoding returns one flat object — the payload section only:**
+
+```typescript
+{ userId: 'abc-123', iat: 1234567890, exp: 1235172690 }
+```
+
+`iat` and `exp` appear here because the library added them to the payload before sealing the token. The secret never comes back — it was used to create the signature, not stored in the payload.
+
+**The rule:** `jwt.sign()` takes 3 arguments as a convenient API. Inside the token there is always one JSON object. The secret lives only in your server's environment — never in the token.
+
+---
+
+## Lesson 117 — JWT logout: why it's harder than it looks and what to do for MVP
+
+**The core problem**
+
+JWTs are stateless — the server never stores them. When a user "logs out," the frontend deletes the token from storage. But the token itself remains cryptographically valid until it expires. If someone intercepted the token before logout, they can still use it.
+
+**Server-side logout options**
+
+| Approach | How it works | Trade-off |
+|---|---|---|
+| Client-side only | Frontend deletes the token | Simple — stolen token stays valid until expiry |
+| Token blacklist | Store invalidated tokens in DB/Redis, check on every request | True revocation — adds a DB lookup to every protected request |
+| Short expiry + refresh tokens | 15min access token + long-lived refresh token | Industry standard — significantly more complex to build |
+
+**For Altus MVP: client-side logout is sufficient**
+
+The risk profile of a fitness game does not justify a token blacklist or refresh token system. The token expires in 7 days anyway. A `POST /auth/logout` endpoint that just tells the frontend "ok, delete your token" adds no real security — the frontend should just delete it without asking.
+
+**The general rule**
+
+Match your logout strategy to your security requirements. A banking app needs refresh tokens and short expiry. A game leaderboard does not. Complexity has a cost — only pay it when the threat model demands it.
+
+---
+
+## Lesson 116 — The N+1 problem and how a JOIN solves it
+
+**What N+1 means**
+
+The naive approach to fetching exercises with difficulties:
+
+```
+Query 1: SELECT * FROM exercises              → returns N exercises
+Query 2: SELECT * FROM exercise_difficulties WHERE exercise_id = id_1
+Query 3: SELECT * FROM exercise_difficulties WHERE exercise_id = id_2
+...
+Query N+1: SELECT * FROM exercise_difficulties WHERE exercise_id = id_N
+```
+
+N exercises = N+1 database queries. With 50 exercises that is 51 round trips to the database. Each round trip has overhead: network latency, connection acquisition, query parsing. This compounds quickly.
+
+**The JOIN solution — 1 query always**
+
+```sql
+SELECT e.*, ed.*
+FROM exercises e
+JOIN exercise_difficulties ed ON ed.exercise_id = e.id
+```
+
+One query returns all the data regardless of how many exercises exist. The cost of extra exercises is more rows in one result set — not more queries.
+
+**Time complexity of the JOIN + reshape approach**
+
+| Step | Complexity | Why |
+|---|---|---|
+| SQL JOIN | O(E × D) | One row per exercise-difficulty pair |
+| JavaScript loop | O(E × D) | One pass through all rows |
+| `exerciseMap[id]` lookup | O(1) | JS objects are hash maps |
+| `Object.values()` | O(E) | One pass through map keys |
+
+Overall: **O(E × D)**. Since D is always 3 (Easy/Medium/Hard), this simplifies to **O(E)** — linear in the number of exercises.
+
+**The real win is not algorithmic — it is network round trips**
+
+Reducing from N+1 queries to 1 query eliminates N database round trips. That is where the actual performance gain comes from, not the Big-O complexity.
+
+---
+
+## Lesson 109 — SQL JOINs: combining two tables in one query
+
+**Why JOINs exist**
+
+Data in a relational database is split across tables to avoid repetition. A `JOIN` combines rows from two tables into one result set wherever a condition is true — used when the API response needs data from more than one table at once.
+
+**The syntax**
+
+```sql
+SELECT
+  e.id    AS exercise_id,
+  e.name,
+  ed.id   AS difficulty_id,
+  ed.level_name
+FROM exercises e
+JOIN exercise_difficulties ed ON ed.exercise_id = e.id
+WHERE e.is_active = true
+ORDER BY e.name, ed.level_name
+```
+
+| Part | What it does |
+|---|---|
+| `FROM exercises e` | Start with the exercises table, alias it `e` |
+| `JOIN exercise_difficulties ed` | Bring in difficulties, alias `ed` |
+| `ON ed.exercise_id = e.id` | The link condition — only combine rows where the difficulty belongs to that exercise |
+| `AS exercise_id` | Alias a column name — needed when both tables have an `id` column to avoid a clash |
+
+**What the result looks like**
+
+The JOIN returns FLAT rows — one row per difficulty, exercise data repeated:
+
+```
+exercise_id | name    | difficulty_id | level_name
+1           | Squats  | a             | Easy
+1           | Squats  | b             | Medium
+1           | Squats  | c             | Hard
+2           | Pushups | d             | Easy
+```
+
+This is expected. The model's job is to reshape these flat rows into nested objects after the query.
+
+---
+
+## Lesson 110 — How to plan interfaces in a model (the 3-interface rule)
+
+Before writing any function in a model, define your interfaces first. Always start from two questions:
+
+**1. What does the SQL return?** → raw row interface
+**2. What does the caller need back?** → output interface(s)
+
+For a JOIN query that needs nested output, you always need 3 interfaces:
+
+| Interface | Answers | Where to look |
+|---|---|---|
+| Raw row | What does one flat SQL row look like? | Your SELECT column list |
+| Nested child | What is inside the nested array? | API spec response |
+| Parent with array | What does the final output object look like? | API spec response |
+
+**Applied to exercises:**
+
+```typescript
+interface ExerciseRow {       // raw SQL row — mirrors SELECT list exactly
+  exercise_id: string;
+  name: string;
+  difficulty_id: string;
+  level_name: string;
+  ...
+}
+
+interface Difficulty {        // one item inside the nested array
+  id: string;
+  level_name: string;
+  target_reps: number;
+  score_multiplier: number;
+}
+
+interface Exercise {          // the final output shape
+  id: string;
+  name: string;
+  difficulties: Difficulty[];
+}
+```
+
+**The rule:** Write interfaces BEFORE writing the function. Once the interfaces are right, the function logic follows naturally.
+
+---
+
+## Lesson 111 — `Record<K, V>`: TypeScript's type for objects with dynamic keys
+
+`Record<K, V>` is a TypeScript built-in utility type. It describes an object where:
+- Every **key** is of type `K`
+- Every **value** is of type `V`
+- The exact keys are not known in advance
+
+```typescript
+const exerciseMap: Record<string, Exercise> = {};
+```
+
+This tells TypeScript: "this object will have string keys (exercise IDs) and Exercise values." At runtime it is just `{}`.
+
+**Why not just use `{}`?**
+
+Plain `{}` tells TypeScript nothing about what goes in the object. TypeScript would not know what type `exerciseMap['some-id']` is, and would not catch mistakes when you access or assign properties.
+
+**Equivalent syntax** — these mean the same thing:
+```typescript
+Record<string, Exercise>
+{ [key: string]: Exercise }   // index signature — older style
+```
+
+`Record` is preferred — shorter and more readable.
+
+---
+
+## Lesson 112 — `console.log` depth limit: why nested objects show as `[Object]`
+
+**The symptom**
+
+```
+[ { id: '1', name: 'Squats', difficulties: [ [Object], [Object] ] } ]
+```
+
+`difficulties` shows `[Object]` instead of the actual data.
+
+**Why it happens**
+
+`console.log` only expands objects to 2 levels deep by default. The `difficulties` array is at level 3 — so Node.js collapses it to `[Object]` rather than printing it fully.
+
+**The fix — use `JSON.stringify` for debugging nested structures**
+
+```typescript
+console.log(JSON.stringify(result, null, 2));
+```
+
+`JSON.stringify(value, null, 2)` converts the full object to a JSON string with 2-space indentation — no depth limit, everything visible.
+
+Remove `JSON.stringify` debug lines before committing. They are for development only.
+
+---
+
+## Lesson 113 — Loop logic bug: push inside `if` vs outside `if`
+
+**The bug**
+
+```typescript
+if (!exerciseMap[row.exercise_id]) {
+  exerciseMap[row.exercise_id] = { ..., difficulties: [] };
+  exerciseMap[row.exercise_id].difficulties.push(...);  // ← inside the if
+}
+```
+
+The push is inside the `if` block — it only runs when the exercise is seen for the **first time**. On the second and third rows (Medium, Hard difficulties), the exercise already exists so the `if` is false — the push never runs. Result: only the first difficulty appears.
+
+**The fix — push outside the `if`**
+
+```typescript
+if (!exerciseMap[row.exercise_id]) {
+  exerciseMap[row.exercise_id] = { ..., difficulties: [] };
+  // only create the entry here — do NOT push here
+}
+
+// always runs — for every row, new exercise or existing
+exerciseMap[row.exercise_id].difficulties.push(...);
+```
+
+**The mental model**
+
+The `if` block answers: *"does this exercise exist yet?"* — create it if not.
+The push answers: *"add this difficulty to whichever exercise this row belongs to."* — always happens.

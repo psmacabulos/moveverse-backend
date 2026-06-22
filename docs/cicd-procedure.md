@@ -1,4 +1,4 @@
-# MoveVerse Backend — CI/CD Procedure
+# Altus Backend — CI/CD Procedure
 
 A step-by-step reference for the full CI/CD pipeline: what it is, how it's structured, and how to set it up.
 
@@ -71,7 +71,7 @@ Push to main
 ## Step 1 — Heroku account setup
 
 1. Go to heroku.com and confirm your account is active via the GitHub Student Developer Pack.
-2. Create a new app — name it something like `moveverse-backend`.
+2. Create a new app — name it something like `altus-backend`.
 3. Go to **Account Settings → API Key** → copy your API key. You will need this in Step 4.
 
 ---
@@ -188,7 +188,7 @@ Go to your Heroku app → **Settings → Config Vars → Reveal Config Vars** an
 | Variable | Where to get the value |
 |---|---|
 | `NODE_ENV` | Type `production` |
-| `JWT_SECRET` | Make up a long random string — e.g. `moveverse-super-secret-2025` |
+| `JWT_SECRET` | Make up a long random string — e.g. `altus-super-secret-2025` |
 | `DB_HOST` | Copy `Host` from Step 2 credentials |
 | `DB_PORT` | Copy `Port` from Step 2 credentials (usually `5432`) |
 | `DB_NAME` | Copy `Database` from Step 2 credentials |
@@ -246,7 +246,7 @@ You only need to do this once. Migrations run automatically on every future depl
 
 After Steps 8 and 9 complete:
 
-1. Visit `https://moveverse-backend.herokuapp.com/health`
+1. Visit `https://api.altus.games/health`
 2. Expected response: `{ "status": "ok" }`
 
 If you see that response, your app is live, the database is connected, and the seed data is in place.

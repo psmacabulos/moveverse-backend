@@ -1,4 +1,4 @@
-# 📖 MoveVerse Backend — User Stories
+# 📖 Altus Backend — User Stories
 
 Every feature exists because a person needs something. This document lists those needs as **user stories**, maps each one to the roadmap phase and branch that delivers it, and tracks honest progress — not "how much code is written" but "how many promises to the user are kept."
 
@@ -22,10 +22,10 @@ Both numbers are true. Infrastructure-first was the right call — but from this
 ## 🔐 Epic 1 — Identity (Phases 7a + 7b · branch `feature/auth`)
 
 ### US-01 — Register
-> As a **visitor**, I want to create an account with username, email, and password, so that MoveVerse can track my workouts as mine.
+> As a **visitor**, I want to create an account with username, email, and password, so that Altus can track my workouts as mine.
 
 Steps the backend performs:
-1. Receive `POST /api/v1/auth/register` with username, email, password
+1. Receive `POST /v1/auth/register` with username, email, password
 2. Hash the password (bcrypt) — never store the original
 3. Insert the user row — if email or username is already taken, the database's UNIQUE constraint refuses the insert, and the service translates that into "Email already registered" / "Username already taken" (learning log, Lesson 65)
 4. Sign a JWT containing the new user's id
@@ -37,7 +37,7 @@ Status: 🔨 In progress (Phase 7a active) · Stack: routes → controller → `
 > As a **registered user**, I want to log in with email and password, so that I can access my account from any device.
 
 Steps:
-1. Receive `POST /api/v1/auth/login`
+1. Receive `POST /v1/auth/login`
 2. Look up user by email, compare password against stored hash (bcrypt.compare)
 3. Wrong email and wrong password return the **same** `401` (no user enumeration)
 4. Success → sign JWT, respond `{ token, user }`
@@ -59,10 +59,10 @@ Status: 🔨 In progress (Phase 7a) · Stack: `auth.middleware.ts` → `findById
 > As a **visitor**, I want to sign up or log in with my Google account, so that I don't have to manage another password.
 
 Steps:
-1. Receive `POST /api/v1/auth/google` with a Google ID token
+1. Receive `POST /v1/auth/google` with a Google ID token
 2. Verify the token with Google (`google-auth-library`)
 3. Existing `google_id` → log them in; new → create user (no password — schema allows `password_hash NULL`)
-4. Respond with a normal MoveVerse JWT — downstream code never knows the difference
+4. Respond with a normal Altus JWT — downstream code never knows the difference
 
 Status: ⏳ Not started (Phase 7b)
 
@@ -74,7 +74,7 @@ Status: ⏳ Not started (Phase 7b)
 > As a **logged-in user**, I want to see all available exercises with their difficulty levels, so that I can choose a workout that matches my ability.
 
 Steps:
-1. `GET /api/v1/exercises` (protected) → join exercises with difficulties, only `is_active = true`
+1. `GET /v1/exercises` (protected) → join exercises with difficulties, only `is_active = true`
 2. Respond with exercises, difficulties nested inside each
 
 Status: ⏳ Not started (Phase 8)
@@ -83,7 +83,7 @@ Status: ⏳ Not started (Phase 8)
 > As a **logged-in user**, I want my completed workout saved with score and calories calculated for me, so that my effort is recorded fairly and identically for everyone.
 
 Steps:
-1. `POST /api/v1/workout_sessions` (protected) with `exercise_difficulty_id`, `reps_completed`, `duration_seconds`
+1. `POST /v1/workout_sessions` (protected) with `exercise_difficulty_id`, `reps_completed`, `duration_seconds`
 2. User id from the token — never from the body
 3. Validate the difficulty exists; **server** calculates score and calories (client-sent scores can't be trusted — it's a leaderboard)
 4. Insert session, then check for newly unlocked achievements
@@ -94,7 +94,7 @@ Status: ⏳ Not started (Phase 9)
 ### US-07 — See my workout history
 > As a **logged-in user**, I want to see my past workouts, so that I can track my progress over time.
 
-Steps: `GET /api/v1/workout_sessions/me` (protected) → sessions for `req.user` id, newest first
+Steps: `GET /v1/workout_sessions/me` (protected) → sessions for `req.user` id, newest first
 
 Status: ⏳ Not started (Phase 9)
 
@@ -112,7 +112,7 @@ Status: ⏳ Not started (Phase 10)
 ### US-09 — View my achievements
 > As a **user**, I want to see all badges I've earned, so that I can enjoy my collection and see what's still locked.
 
-Steps: `GET /api/v1/users/me/achievements` (protected) → user's earned achievements with badge data
+Steps: `GET /v1/users/me/achievements` (protected) → user's earned achievements with badge data
 
 Status: ⏳ Not started (Phase 10)
 
@@ -123,28 +123,28 @@ Status: ⏳ Not started (Phase 10)
 ### US-10 — View my profile
 > As a **user**, I want to view my own profile, so that I can confirm my account details.
 
-Steps: `GET /api/v1/users/me` (protected) → profile from `req.user`, never the password hash
+Steps: `GET /v1/users/me` (protected) → profile from `req.user`, never the password hash
 
 Status: ⏳ Not started (Phase 11)
 
 ### US-11 — Update my username
 > As a **user**, I want to change my username, so that my public identity stays under my control.
 
-Steps: `PUT /api/v1/users/me` (protected) → validate new username, reject if taken (UNIQUE), update, return updated profile
+Steps: `PUT /v1/users/me` (protected) → validate new username, reject if taken (UNIQUE), update, return updated profile
 
 Status: ⏳ Not started (Phase 11)
 
 ### US-12 — See my stats
 > As a **user**, I want my totals (workouts, reps, calories), so that I can see the big picture of my effort.
 
-Steps: `GET /api/v1/users/me/stats` (protected) → aggregate queries over workout_sessions (live COUNT/SUM — Lesson 41)
+Steps: `GET /v1/users/me/stats` (protected) → aggregate queries over workout_sessions (live COUNT/SUM — Lesson 41)
 
 Status: ⏳ Not started (Phase 11)
 
 ### US-13 — View someone's public profile
 > As **anyone**, I want to view a user's public profile, so that I can check out people I see on the leaderboard.
 
-Steps: `GET /api/v1/users/:id` (**public**) → public fields only (username, achievements, public stats) — no email, no ids of private data
+Steps: `GET /v1/users/:id` (**public**) → public fields only (username, achievements, public stats) — no email, no ids of private data
 
 Status: ⏳ Not started (Phase 11)
 
@@ -155,7 +155,7 @@ Status: ⏳ Not started (Phase 11)
 ### US-14 — View the leaderboard
 > As **anyone (even logged out)**, I want to see top scores, optionally filtered by exercise, so that I'm motivated to compete — and tempted to sign up.
 
-Steps: `GET /api/v1/leaderboard?exercise=squats` (**public**) → top 50 by score, joined with usernames and exercise names, optional `ILIKE` filter
+Steps: `GET /v1/leaderboard?exercise=squats` (**public**) → top 50 by score, joined with usernames and exercise names, optional `ILIKE` filter
 
 Status: ⏳ Not started (Phase 12)
 

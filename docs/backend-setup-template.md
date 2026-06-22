@@ -1,4 +1,4 @@
-# MoveVerse Backend — Setup Template
+# Altus Backend — Setup Template
 
 A reference for setting up a production-ready Node.js + TypeScript + PostgreSQL backend from scratch. Use this when starting a new project or onboarding onto this stack.
 
@@ -106,7 +106,7 @@ NODE_ENV=development
 
 DB_HOST=db
 DB_PORT=5432
-DB_NAME=moveverse
+DB_NAME=altus
 DB_USER=postgres
 DB_PASSWORD=postgres
 
