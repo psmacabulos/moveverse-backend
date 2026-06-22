@@ -1,4 +1,4 @@
-# MoveVerse Backend — Testing Guide
+# Altus Backend — Testing Guide
 
 A record of manual API tests organised by phase. Each section covers one feature area and lists the curl commands needed to verify it works correctly — including both the happy path and expected error cases.
 
@@ -7,7 +7,7 @@ A record of manual API tests organised by phase. Each section covers one feature
 ## How to read a curl command
 
 ```bash
-curl -i -X POST http://localhost:5600/api/v1/auth/register \
+curl -i -X POST http://localhost:5600/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"player1","email":"player1@test.com","password":"password123"}'
 ```
@@ -34,7 +34,7 @@ Content-Type: application/json
 **Types of tests in this document:**
 
 - **Integration test** — sends a real HTTP request to the running app, which hits the real database. Verifies the full stack works end to end. Requires `docker compose up -d`.
-- **Unit test** — tests one function in isolation, no database or HTTP. MoveVerse does not have unit tests yet — that is a future phase.
+- **Unit test** — tests one function in isolation, no database or HTTP. Altus does not have unit tests yet — that is a future phase.
 
 All tests in this document are **integration tests**.
 
@@ -60,7 +60,7 @@ Expected status: `200 OK` — Expected body: `{"status":"ok"}`
 
 ## Part 1 — Authentication (Phase 7a)
 
-Tests for `POST /api/v1/auth/register` and `POST /api/v1/auth/login`.
+Tests for `POST /v1/auth/register` and `POST /v1/auth/login`.
 
 ---
 
@@ -71,7 +71,7 @@ Tests for `POST /api/v1/auth/register` and `POST /api/v1/auth/login`.
 **Expected body:** `{ token, user }` — user contains id, username, email, google_id, role, created_at, updated_at
 
 ```bash
-curl -i -X POST http://localhost:5600/api/v1/auth/register \
+curl -i -X POST http://localhost:5600/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"player1","email":"player1@test.com","password":"password123"}'
 ```
@@ -85,7 +85,7 @@ curl -i -X POST http://localhost:5600/api/v1/auth/register \
 **Expected body:** `{ "error": "Email already registered" }`
 
 ```bash
-curl -i -X POST http://localhost:5600/api/v1/auth/register \
+curl -i -X POST http://localhost:5600/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"player99","email":"player1@test.com","password":"password123"}'
 ```
@@ -99,7 +99,7 @@ curl -i -X POST http://localhost:5600/api/v1/auth/register \
 **Expected body:** `{ "error": "Username already registered" }`
 
 ```bash
-curl -i -X POST http://localhost:5600/api/v1/auth/register \
+curl -i -X POST http://localhost:5600/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"player1","email":"player99@test.com","password":"password123"}'
 ```
@@ -113,7 +113,7 @@ curl -i -X POST http://localhost:5600/api/v1/auth/register \
 **Expected body:** `{ token, user }`
 
 ```bash
-curl -i -X POST http://localhost:5600/api/v1/auth/login \
+curl -i -X POST http://localhost:5600/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"player1@test.com","password":"password123"}'
 ```
@@ -127,7 +127,7 @@ curl -i -X POST http://localhost:5600/api/v1/auth/login \
 **Expected body:** `{ "error": "Invalid credentials" }`
 
 ```bash
-curl -i -X POST http://localhost:5600/api/v1/auth/login \
+curl -i -X POST http://localhost:5600/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"player1@test.com","password":"wrongpassword"}'
 ```
@@ -141,7 +141,7 @@ curl -i -X POST http://localhost:5600/api/v1/auth/login \
 **Expected body:** `{ "error": "Invalid credentials" }`
 
 ```bash
-curl -i -X POST http://localhost:5600/api/v1/auth/login \
+curl -i -X POST http://localhost:5600/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"nobody@test.com","password":"password123"}'
 ```

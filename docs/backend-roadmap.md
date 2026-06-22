@@ -1,19 +1,20 @@
-# 🗺️ MoveVerse Backend — Build Roadmap
+# 🗺️ Altus Backend — Build Roadmap
 
 A step-by-step guide from setup to production.
 This is a living document — update it as the project evolves.
 
 ---
 
-## 🎯 Current Target — Phase 7a Auth
+## 🎯 Current Target — Phase 8: Exercises Endpoint
 
-Phases 1–6 and Heroku deployment are complete. Auth (Phase 7a) is now the active focus.
+Phase 7a is complete and merged to main. Phase 7b (Google OAuth) is deferred — skipped for now. Phase 8 is the active focus.
 
 ```
 Phases 1–6   ✅ Done     Setup, server, Docker, CI/CD, database, seed data
 Heroku       ✅ Live     App deployed, migrations ran, database seeded
-Phase 7a     🔨 Active   Email + password auth — model, service, controller, routes, middleware
-Phase 7b     ⏳ Next      Google OAuth
+Phase 7a     ✅ Done     Email + password auth — register, login, JWT middleware
+Phase 7b     ⏸ Deferred  Google OAuth (skipped for now)
+Phase 8      🔨 Next     Exercises Endpoint
 ```
 
 ---
@@ -59,7 +60,7 @@ After Phase 12 →  Level 4: + full test suite on PR to main
 
 ---
 
-## 📊 Progress Overview — 46% complete (6 of 13 phases done)
+## 📊 Progress Overview — ~55% complete (Phase 7a done, Phase 8 active)
 
 ```
 Phase 1  ████████████████████  ✅ Done          Setup & Tooling
@@ -69,8 +70,9 @@ Phase 3  ████████████████████  ✅ Done 
 Phase 4  ████████████████████  ✅ Done          Database Connection
 Phase 5  ████████████████████  ✅ Done          Schema & Migrations
 Phase 6  ████████████████████  ✅ Done          Seed Data
-Phase 7  ░░░░░░░░░░░░░░░░░░░░  🔨 In Progress   Authentication  ← active
-Phase 8  ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Exercises Endpoint
+Phase 7a ████████████████████  ✅ Done          Auth — Email + Password
+Phase 7b ████████████████████  ⏸ Deferred       Auth — Google OAuth
+Phase 8  ░░░░░░░░░░░░░░░░░░░░  🔨 Active         Exercises Endpoint  ← current
 Phase 9  ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Workout Sessions
 Phase 10 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Achievement System
 Phase 11 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       User Profile
@@ -166,7 +168,7 @@ See `docs/cicd-procedure.md` for the full step-by-step setup.
 - [x] Add `HEROKU_API_KEY` to GitHub Secrets
 - [x] Add deploy job to `ci.yml` (runs only on push to `main`, needs CI to pass)
 - [x] Set all config vars in Heroku dashboard
-- [x] Verify: push to `main` → Heroku deploys → `GET https://moveverse-backend.herokuapp.com/health` responds
+- [x] Verify: push to `main` → Heroku deploys → `GET https://api.altus.games/health` responds
 
 ```
 From this point on, the workflow is:
@@ -235,20 +237,22 @@ Migration order matters — foreign keys require parent tables first:
 
 Every endpoint in this phase follows the **Route → Controller → Service → Model** pattern.
 
-### 7a — Email + Password  ← priority this week
+### 7a — Email + Password  ✅ Done — merged to main 2026-06-13
 
-- [ ] `src/models/user.model.ts` — `createUser()`, `findByEmail()`, `findById()`
-- [ ] `src/services/auth.service.ts` — `register()`, `login()`, `generateJWT()`
-- [ ] `src/controllers/auth.controller.ts` — `handleRegister()`, `handleLogin()`
-- [ ] `src/routes/auth.routes.ts` — `POST /api/v1/auth/register`, `POST /api/v1/auth/login`
-- [ ] `src/middleware/auth.middleware.ts` — `requireAuth()` verifies JWT, attaches `req.user`
-- [ ] Mount auth routes in `src/index.ts`
-- [ ] Test register: `POST /auth/register` → receive `{ token, user }`
-- [ ] Test login: `POST /auth/login` → receive `{ token, user }`
-- [ ] Test protection: call a protected route without a token → receive `401`
+- [x] `src/models/user.model.ts` — `createUser()`, `findByEmail()`, `findById()`
+- [x] `src/services/auth.service.ts` — `register()`, `login()`, `generateJWT()`
+- [x] `src/controllers/auth.controller.ts` — `handleRegister()`, `handleLogin()`
+- [x] `src/routes/auth.routes.ts` — `POST /v1/auth/register`, `POST /v1/auth/login`
+- [x] `src/middleware/auth.middleware.ts` — `requireAuth()` verifies JWT, attaches `req.user`
+- [x] `src/types/express.d.ts` — TypeScript augmentation for `req.user`
+- [x] Mount auth routes in `src/index.ts` at `/v1/auth`
+- [x] Test register: `POST /v1/auth/register` → `201 { token, user }`
+- [x] Test login: `POST /v1/auth/login` → `200 { token, user }`
+- [x] Test duplicate email → `409`, duplicate username → `409`
+- [x] Test wrong password → `401`, unknown email → `401`
 
 ```
-POST /api/v1/auth/register
+POST /v1/auth/register
   → auth.controller
   → auth.service  (hash password, create user, generate JWT)
   → user.model    (INSERT INTO users)
@@ -266,8 +270,8 @@ requireAuth middleware (on every protected route):
 
 - [ ] `src/services/google.service.ts` — `verifyGoogleToken()` using `google-auth-library`
 - [ ] Add `handleGoogleAuth()` to `auth.controller.ts`
-- [ ] Add `POST /api/v1/auth/google` to `auth.routes.ts`
-- [ ] Test: send a real Google ID token → receive MoveVerse JWT
+- [ ] Add `POST /v1/auth/google` to `auth.routes.ts`
+- [ ] Test: send a real Google ID token → receive Altus JWT
 
 ### 🤖 CI Checkpoint — Upgrade to Level 3 after this phase
 
@@ -279,25 +283,32 @@ Add to `ci.yml` (only on push to `dev` or `main`):
 ---
 
 ## 🏋️ Phase 8 — Exercises Endpoint
-> Goal: Authenticated users fetch all exercises with nested difficulties in one call.
+> Goal: One protected endpoint returns all active exercises with nested difficulties. Called once on login, cached in React context.
 
-- [ ] `src/models/exercise.model.ts` — `getAllExercisesWithDifficulties()`
+**Design decisions:**
+- No separate `GET /exercises/:id/difficulties` endpoint — difficulties are nested inside the exercises response
+- `score` is never sent by the frontend — backend calculates it from `reps_completed × score_multiplier`
+- Frontend displays live score locally during gameplay; backend only involved at session end
+
+- [ ] `src/models/exercise.model.ts` — `getAllExercises()` (JOIN with exercise_difficulties, group into nested structure)
 - [ ] `src/services/exercise.service.ts` — `getExercises()`
 - [ ] `src/controllers/exercise.controller.ts` — `handleGetExercises()`
-- [ ] `src/routes/exercise.routes.ts` — `GET /api/v1/exercises` (protected)
+- [ ] `src/routes/exercise.routes.ts` — `GET /v1/exercises` (protected)
 - [ ] Mount in `src/index.ts`
-- [ ] Test: valid JWT → exercises list with difficulties nested inside each exercise
+- [ ] Test: valid JWT → exercises with nested difficulties array including target_reps and score_multiplier
 
 ```
-GET /api/v1/exercises
+GET /v1/exercises
   → requireAuth
   → exercise.controller
   → exercise.service
   → exercise.model
-      SELECT exercises.*, exercise_difficulties.*
-      FROM exercises
-      JOIN exercise_difficulties ON ...
-      WHERE exercises.is_active = true
+      SELECT e.id, e.name, e.description, e.calories_per_rep,
+             ed.id, ed.level_name, ed.target_reps, ed.score_multiplier
+      FROM exercises e
+      JOIN exercise_difficulties ed ON ed.exercise_id = e.id
+      WHERE e.is_active = true
+      ORDER BY e.name, ed.level_name
   ← [ { id, name, calories_per_rep, difficulties: [...] } ]
 ```
 
@@ -311,12 +322,12 @@ GET /api/v1/exercises
   - [ ] `saveSession()` — validates `exercise_difficulty_id`, calculates score + calories, saves
   - [ ] `checkAchievements()` — checks if new achievements unlocked after saving
 - [ ] `src/controllers/workout.controller.ts` — `handleSaveSession()`, `handleGetMyHistory()`
-- [ ] `src/routes/workout.routes.ts` — `POST /api/v1/workout_sessions`, `GET /api/v1/workout_sessions/me`
+- [ ] `src/routes/workout.routes.ts` — `POST /v1/workout_sessions`, `GET /v1/workout_sessions/me`
 - [ ] Mount in `src/index.ts`
 - [ ] Test: POST workout → check score, calories, `new_achievements` in response
 
 ```
-POST /api/v1/workout_sessions
+POST /v1/workout_sessions
   → requireAuth (reads req.user.userId — NOT from body)
   → workout.controller
   → workout.service
@@ -336,7 +347,7 @@ POST /api/v1/workout_sessions
 - [ ] `src/models/achievement.model.ts` — `getAll()`, `getUserAchievements()`, `unlock()`
 - [ ] `src/services/achievement.service.ts` — `evaluateAchievements()` compares stats to thresholds
 - [ ] `src/controllers/achievement.controller.ts` — `handleGetMyAchievements()`
-- [ ] `src/routes/achievement.routes.ts` — `GET /api/v1/users/me/achievements` (protected)
+- [ ] `src/routes/achievement.routes.ts` — `GET /v1/users/me/achievements` (protected)
 - [ ] Mount in `src/index.ts`
 - [ ] Test: first workout → `new_achievements` includes "First Workout" → GET achievements → appears in list
 
@@ -357,10 +368,10 @@ Achievement evaluation (inside workout.service, after saving):
 - [ ] `src/services/user.service.ts` — `getProfile()`, `updateProfile()`, `getStats()`
 - [ ] `src/controllers/user.controller.ts` — one handler per endpoint
 - [ ] `src/routes/user.routes.ts`
-  - [ ] `GET  /api/v1/users/me` (protected)
-  - [ ] `PUT  /api/v1/users/me` (protected)
-  - [ ] `GET  /api/v1/users/me/stats` (protected)
-  - [ ] `GET  /api/v1/users/:id` (public)
+  - [ ] `GET  /v1/users/me` (protected)
+  - [ ] `PUT  /v1/users/me` (protected)
+  - [ ] `GET  /v1/users/me/stats` (protected)
+  - [ ] `GET  /v1/users/:id` (public)
 - [ ] Mount in `src/index.ts`
 - [ ] Test: update username → GET /users/me reflects the change
 
@@ -372,13 +383,13 @@ Achievement evaluation (inside workout.service, after saving):
 - [ ] `src/models/leaderboard.model.ts` — `getTopScores(exerciseName?)`
 - [ ] `src/services/leaderboard.service.ts` — `getLeaderboard(exerciseName?)`
 - [ ] `src/controllers/leaderboard.controller.ts` — `handleGetLeaderboard()`
-- [ ] `src/routes/leaderboard.routes.ts` — `GET /api/v1/leaderboard` (public)
+- [ ] `src/routes/leaderboard.routes.ts` — `GET /v1/leaderboard` (public)
 - [ ] Mount in `src/index.ts`
 - [ ] Test: multiple users post workouts → leaderboard shows them ranked by score
 - [ ] Test: `?exercise=squats` → only squats results returned
 
 ```
-GET /api/v1/leaderboard?exercise=squats
+GET /v1/leaderboard?exercise=squats
   → leaderboard.controller
   → leaderboard.service
   → leaderboard.model
@@ -419,11 +430,11 @@ Middleware order in src/index.ts:
   cors()
   express.json()
   ↓
-  /api/v1/auth routes
-  /api/v1/exercises routes
-  /api/v1/workout_sessions routes
-  /api/v1/users routes
-  /api/v1/leaderboard routes
+  /v1/auth routes
+  /v1/exercises routes
+  /v1/workout_sessions routes
+  /v1/users routes
+  /v1/leaderboard routes
   ↓
   404 handler     ← must be after all routes
   error handler   ← must be last

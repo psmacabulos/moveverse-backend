@@ -1,10 +1,10 @@
-#  MoveVerse Database Design and ERD
+#  Altus Database Design and ERD
 
 ## 📖 Overview
 
-This document defines the PostgreSQL database schema and entity relationships used by MoveVerse.
+This document defines the PostgreSQL database schema and entity relationships used by Altus.
 
-MoveVerse uses a relational database architecture to support:
+Altus uses a relational database architecture to support:
 
 - User authentication
 - Workout history tracking
@@ -73,7 +73,7 @@ This rule is enforced using a PostgreSQL CHECK constraint.
 
 ### Design Decision
 
-MoveVerse uses exercise-specific difficulty presets instead of global difficulty settings.
+Altus uses exercise-specific difficulty presets instead of global difficulty settings.
 
 Example:
 
@@ -130,7 +130,7 @@ PRIMARY KEY (user_id, achievement_id)
 
 # 🧭 Entity Relationship Diagram (ERD)
 
-![MoveVerse ERD Diagram](./images/ERD.md.png)
+![Altus ERD Diagram](./images/ERD.md.png)
 
 ---
 
