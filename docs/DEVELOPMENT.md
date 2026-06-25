@@ -58,6 +58,7 @@ feat/* → one branch per phase (current: merge feat/exercises → dev → main)
 ## Key docs
 - `docs/API-specifications.md` — full endpoint spec and response shapes
 - `docs/backend-roadmap.md` — phase plan and progress
-- `docs/learning-log.md` — 117 lessons logged (read before answering questions — may already be covered)
+- `docs/learning-log.md` — 122 lessons logged (Lessons 0–122, Phase 1–9, read before answering questions)
+- `docs/learning-log-part2.md` — topic-based reference (Phase 9+, automated testing onwards)
 - `docs/user-stories.md` — user stories mapped to phases
 - `EXAMPLES/` — reference files for each layer (model, service, controller, routes)

@@ -1,6 +1,8 @@
-# Altus Backend — Learning Log
+# Altus Backend — Learning Log (Part 1)
 
 A personal record of concepts learned while building this project. Written for future reference — not documentation of what the code does, but why things work the way they do.
+
+> **Part 2** is in `docs/learning-log-part2.md` — organised by topic rather than lesson number. Start there for anything learned from Phase 9 onwards.
 
 ---
 
