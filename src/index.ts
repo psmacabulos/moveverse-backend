@@ -1,24 +1,7 @@
-import 'dotenv/config';
-import express from 'express';
-import authRouter from './routes/auth.routes';
-import exerciseRouter from './routes/exercise.routes';
-import cors from 'cors';
-import helmet from 'helmet';
+import app from './app';
 import { connectDB } from './config/db';
 
-const app = express();
 const PORT = process.env.PORT || 3000;
-
-// helmet, cors, and express.json must be registered before routes
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
-app.use('/v1/auth', authRouter);
-app.use('/v1/exercises', exerciseRouter);
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
 
 const startServer = async (): Promise<void> => {
   await connectDB();

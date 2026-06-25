@@ -5,16 +5,17 @@ This is a living document — update it as the project evolves.
 
 ---
 
-## 🎯 Current Target — Phase 8: Exercises Endpoint
+## 🎯 Current Target — Phase 9: Workout Sessions
 
-Phase 7a is complete and merged to main. Phase 7b (Google OAuth) is deferred — skipped for now. Phase 8 is the active focus.
+Phase 8 (Exercises endpoint) is complete and merged to main. Phase 9 is the active focus.
 
 ```
 Phases 1–6   ✅ Done     Setup, server, Docker, CI/CD, database, seed data
 Heroku       ✅ Live     App deployed, migrations ran, database seeded
 Phase 7a     ✅ Done     Email + password auth — register, login, JWT middleware
 Phase 7b     ⏸ Deferred  Google OAuth (skipped for now)
-Phase 8      🔨 Next     Exercises Endpoint
+Phase 8      ✅ Done     Exercises Endpoint
+Phase 9      🔨 Active   Workout Sessions
 ```
 
 ---
@@ -60,7 +61,7 @@ After Phase 12 →  Level 4: + full test suite on PR to main
 
 ---
 
-## 📊 Progress Overview — ~55% complete (Phase 7a done, Phase 8 active)
+## 📊 Progress Overview — ~60% complete (Phase 8 done, Phase 9 active)
 
 ```
 Phase 1  ████████████████████  ✅ Done          Setup & Tooling
@@ -72,8 +73,8 @@ Phase 5  ████████████████████  ✅ Done 
 Phase 6  ████████████████████  ✅ Done          Seed Data
 Phase 7a ████████████████████  ✅ Done          Auth — Email + Password
 Phase 7b ████████████████████  ⏸ Deferred       Auth — Google OAuth
-Phase 8  ░░░░░░░░░░░░░░░░░░░░  🔨 Active         Exercises Endpoint  ← current
-Phase 9  ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Workout Sessions
+Phase 8  ████████████████████  ✅ Done          Exercises Endpoint
+Phase 9  ░░░░░░░░░░░░░░░░░░░░  🔨 Active         Workout Sessions  ← current
 Phase 10 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Achievement System
 Phase 11 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       User Profile
 Phase 12 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Leaderboard & Public Profiles
