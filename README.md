@@ -185,12 +185,56 @@ Returns:
 
 ---
 
-### Workout Sessions *(planned)*
+### Workout Sessions
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | POST | `/workout_sessions` | 🔒 | Save a completed session |
 | GET | `/workout_sessions/me` | 🔒 | Current user's session history |
+
+**Save a session**
+
+```bash
+curl -i -X POST http://localhost:5600/v1/workout_sessions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d "{\"exercise_difficulty_id\":\"<uuid>\",\"reps_completed\":15,\"duration_seconds\":60}"
+```
+
+Returns:
+
+```json
+{
+  "id": "uuid",
+  "score": 630,
+  "calories_burned": 13.44,
+  "completed_at": "2025-06-01T10:30:00.000Z"
+}
+```
+
+**Get history**
+
+```bash
+curl -i http://localhost:5600/v1/workout_sessions/me \
+  -H "Authorization: Bearer <token>"
+```
+
+Returns:
+
+```json
+[
+  {
+    "id": "uuid",
+    "exercise": "Squats",
+    "difficulty": "Medium",
+    "reps_completed": 15,
+    "score": 630,
+    "duration_seconds": 60,
+    "calories_burned": 13.44,
+    "completed_at": "2025-06-01T10:30:00.000Z"
+  }
+]
+```
 
 ---
 
@@ -216,10 +260,22 @@ Returns:
 
 ---
 
+## Running tests
+
+Tests require Docker running with the database migrated and seeded. `.env` must have `DB_HOST=localhost`.
+
+```bash
+npm test              # full suite
+npx jest <filename>   # single file e.g. npx jest workout
+```
+
+---
+
 ## Project structure
 
 ```
 src/
+  __tests__/    Integration test files (Jest + Supertest)
   config/       PostgreSQL connection pool
   db/           Migration and seed scripts + SQL files
   controllers/  HTTP handlers (unpack req, call service, send res)
@@ -228,5 +284,7 @@ src/
   routes/       URL → controller mappings
   services/     Business logic (register, login, JWT)
   types/        TypeScript global augmentations
-  index.ts      App entry point
+  app.ts        Express app (middleware + routes)
+  index.ts      Server entry point (app.listen only)
+jest.config.ts  Test runner configuration
 ```

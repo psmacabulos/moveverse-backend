@@ -5,9 +5,9 @@ This is a living document — update it as the project evolves.
 
 ---
 
-## 🎯 Current Target — Phase 9: Workout Sessions
+## 🎯 Current Target — Phase 10: Achievement System
 
-Phase 8 (Exercises endpoint) is complete and merged to main. Phase 9 is the active focus.
+Phase 9 (Workout Sessions + Automated Tests) is complete and merged to main. Phase 10 is the active focus.
 
 ```
 Phases 1–6   ✅ Done     Setup, server, Docker, CI/CD, database, seed data
@@ -15,7 +15,8 @@ Heroku       ✅ Live     App deployed, migrations ran, database seeded
 Phase 7a     ✅ Done     Email + password auth — register, login, JWT middleware
 Phase 7b     ⏸ Deferred  Google OAuth (skipped for now)
 Phase 8      ✅ Done     Exercises Endpoint
-Phase 9      🔨 Active   Workout Sessions
+Phase 9      ✅ Done     Workout Sessions + Automated Integration Tests
+Phase 10     🔨 Active   Achievement System
 ```
 
 ---
@@ -61,7 +62,7 @@ After Phase 12 →  Level 4: + full test suite on PR to main
 
 ---
 
-## 📊 Progress Overview — ~60% complete (Phase 8 done, Phase 9 active)
+## 📊 Progress Overview — ~70% complete (Phase 9 done, Phase 10 active)
 
 ```
 Phase 1  ████████████████████  ✅ Done          Setup & Tooling
@@ -74,8 +75,8 @@ Phase 6  ████████████████████  ✅ Done 
 Phase 7a ████████████████████  ✅ Done          Auth — Email + Password
 Phase 7b ████████████████████  ⏸ Deferred       Auth — Google OAuth
 Phase 8  ████████████████████  ✅ Done          Exercises Endpoint
-Phase 9  ░░░░░░░░░░░░░░░░░░░░  🔨 Active         Workout Sessions  ← current
-Phase 10 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Achievement System
+Phase 9  ████████████████████  ✅ Done          Workout Sessions + Automated Tests
+Phase 10 ░░░░░░░░░░░░░░░░░░░░  🔨 Active         Achievement System  ← current
 Phase 11 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       User Profile
 Phase 12 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Leaderboard & Public Profiles
 Phase 13 ░░░░░░░░░░░░░░░░░░░░  ⏳ Upcoming       Validation & Error Handling
@@ -291,12 +292,12 @@ Add to `ci.yml` (only on push to `dev` or `main`):
 - `score` is never sent by the frontend — backend calculates it from `reps_completed × score_multiplier`
 - Frontend displays live score locally during gameplay; backend only involved at session end
 
-- [ ] `src/models/exercise.model.ts` — `getAllExercises()` (JOIN with exercise_difficulties, group into nested structure)
-- [ ] `src/services/exercise.service.ts` — `getExercises()`
-- [ ] `src/controllers/exercise.controller.ts` — `handleGetExercises()`
-- [ ] `src/routes/exercise.routes.ts` — `GET /v1/exercises` (protected)
-- [ ] Mount in `src/index.ts`
-- [ ] Test: valid JWT → exercises with nested difficulties array including target_reps and score_multiplier
+- [x] `src/models/exercise.model.ts` — `getAllExercises()` (JOIN with exercise_difficulties, group into nested structure)
+- [x] `src/services/exercise.service.ts` — `getExercises()`
+- [x] `src/controllers/exercise.controller.ts` — `handleGetExercises()`
+- [x] `src/routes/exercise.routes.ts` — `GET /v1/exercises` (protected)
+- [x] Mount in `src/app.ts`
+- [x] Test: valid JWT → exercises with nested difficulties array including target_reps and score_multiplier
 
 ```
 GET /v1/exercises
@@ -318,14 +319,15 @@ GET /v1/exercises
 ## 💪 Phase 9 — Workout Sessions
 > Goal: Users save a completed workout. Score and calories are calculated server-side.
 
-- [ ] `src/models/workout.model.ts` — `createSession()`, `getSessionsByUser()`
-- [ ] `src/services/workout.service.ts`
-  - [ ] `saveSession()` — validates `exercise_difficulty_id`, calculates score + calories, saves
-  - [ ] `checkAchievements()` — checks if new achievements unlocked after saving
-- [ ] `src/controllers/workout.controller.ts` — `handleSaveSession()`, `handleGetMyHistory()`
-- [ ] `src/routes/workout.routes.ts` — `POST /v1/workout_sessions`, `GET /v1/workout_sessions/me`
-- [ ] Mount in `src/index.ts`
-- [ ] Test: POST workout → check score, calories, `new_achievements` in response
+- [x] `src/models/workout.model.ts` — `createSession()`, `getSessionsByUser()`, `findDifficultyById()`
+- [x] `src/services/workout.service.ts`
+  - [x] `saveSession()` — validates `exercise_difficulty_id`, calculates score + calories, saves
+  - [ ] `checkAchievements()` — moved to Phase 10
+- [x] `src/controllers/workout.controller.ts` — `handleSaveSession()`, `handleGetMyHistory()`
+- [x] `src/routes/workout.routes.ts` — `POST /v1/workout_sessions`, `GET /v1/workout_sessions/me`
+- [x] Mount in `src/app.ts`
+- [x] Automated tests: 14 tests across auth, exercises, and workout sessions — all green
+- [x] Jest + Supertest setup — `jest.config.ts`, app/server split (`src/app.ts`)
 
 ```
 POST /v1/workout_sessions
