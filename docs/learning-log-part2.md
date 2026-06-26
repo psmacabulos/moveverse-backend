@@ -315,3 +315,97 @@ Tests are part of the definition of done for a feature — not a separate task a
 3. CI is green
 
 "The code works, I'll add tests later" is a debt that rarely gets paid.
+
+---
+
+## Deployment & Heroku
+
+### What the Procfile does
+
+The `Procfile` is a Heroku-specific file in the project root. It tells Heroku what commands to run and when after your code is deployed.
+
+```
+release: npm run migrate:prod
+web: npm start
+```
+
+| Line | When it runs | What it does |
+|---|---|---|
+| `release:` | Before the app starts, on every deploy | Runs migrations against the production database |
+| `web:` | After `release:` succeeds | Starts the Express server — tells Heroku this process receives HTTP traffic |
+
+**Order matters:** Heroku always runs `release:` first. If it fails, `web:` never runs and the old version keeps serving traffic. This is a safety net — a broken migration cannot take down a live app.
+
+Without the `web:` line, your code is deployed but the server never starts. Without `release:`, your new tables would not exist before the app tries to use them.
+
+### Why migrations are safe to re-run — `CREATE TABLE IF NOT EXISTS`
+
+Every migration file uses `CREATE TABLE IF NOT EXISTS`:
+
+```sql
+CREATE TABLE IF NOT EXISTS users ( ... );
+```
+
+This makes migrations **idempotent** — safe to run multiple times with the same result:
+
+- **First deploy ever** → table doesn't exist → PostgreSQL creates it
+- **Every deploy after** → table already exists → PostgreSQL skips it, touches nothing
+
+Your existing data (users, sessions, achievements) is completely untouched on every deploy. The `release:` Procfile line can run on every push to `main` safely because of this clause.
+
+**The honest limitation:** `IF NOT EXISTS` only handles creating tables. If you need to add a column to an existing table later, this approach cannot do it — the table already exists so the whole statement is skipped. Real production migration tools (like Flyway or db-migrate) solve this by tracking which scripts have already run. For MVP, `IF NOT EXISTS` is the right call until you actually need to alter a table.
+
+### How the `dist/` folder is created on Heroku
+
+`dist/` is in `.gitignore` — it is never committed to GitHub. Heroku builds it fresh on every deploy.
+
+**Full deploy flow:**
+
+```
+Push to main
+  → GitHub Actions runs CI (lint + typecheck)
+  → GitHub Actions pushes code to Heroku
+  → Heroku's Node.js buildpack:
+      1. npm ci                 ← installs all dependencies
+      2. npm run build          ← runs tsc, creates dist/ folder
+  → Procfile runs:
+      3. release: npm run migrate:prod   ← node dist/db/migrate.js
+      4. web: npm start                  ← node dist/index.js
+  → App is live
+```
+
+Step 2 is **automatic** — Heroku's buildpack detects a `build` script in `package.json` and runs it by convention. You do not configure this anywhere.
+
+### What `tsc` does — TypeScript compilation
+
+`tsc` is the TypeScript compiler. It reads every `.ts` file in `src/` and outputs the equivalent `.js` file in `dist/`, preserving the same folder structure:
+
+```
+src/index.ts           →   dist/index.js
+src/config/db.ts       →   dist/config/db.js
+src/routes/auth.ts     →   dist/routes/auth.js
+```
+
+Node.js cannot run TypeScript natively — it only understands JavaScript. `tsc` is the translation step between the code you write and the code the server runs.
+
+This is why local dev and production use different scripts:
+
+| Environment | Command | Why |
+|---|---|---|
+| Local dev | `ts-node-dev src/index.ts` | Compiles TypeScript on the fly — no build step needed |
+| Production | `node dist/index.js` | Runs pre-compiled JavaScript — TypeScript is gone |
+| Production migration | `node dist/db/migrate.js` | Same reason — compiled output only |
+
+### Production seeding — one-time manual step
+
+Migrations run automatically on every deploy. Seeding is different — it is a one-time manual step run via the Heroku CLI:
+
+```
+heroku run npm run seed:prod --app altus-backend
+```
+
+`heroku run` opens a temporary one-off dyno, runs the command against the live production database, then closes. The seed script uses `ON CONFLICT DO NOTHING` on every insert, so re-running it is safe — no duplicates.
+
+**Rule of thumb:**
+- Migrations → automatic, every deploy, via `release:` in Procfile
+- Seeding → manual, one-time, via `heroku run`

@@ -351,16 +351,35 @@ POST /v1/workout_sessions
 - [ ] `src/services/achievement.service.ts` — `evaluateAchievements()` compares stats to thresholds
 - [ ] `src/controllers/achievement.controller.ts` — `handleGetMyAchievements()`
 - [ ] `src/routes/achievement.routes.ts` — `GET /v1/users/me/achievements` (protected)
-- [ ] Mount in `src/index.ts`
+- [ ] Mount in `src/app.ts`
+- [ ] Seed achievements table with the 13 agreed achievements (see table below)
 - [ ] Test: first workout → `new_achievements` includes "First Workout" → GET achievements → appears in list
 
 ```
 Achievement evaluation (inside workout.service, after saving):
-  1. Get user's total session count, total reps
+  1. Get user's total session count, total reps, total score, total calories
   2. For each achievement: check requirement_type + requirement_value
   3. If threshold crossed and not already in user_achievements → INSERT
   4. Return newly inserted achievements
 ```
+
+### 🏅 Achievements Seed Data
+
+| Name | Description | requirement_type | requirement_value |
+|---|---|---|---|
+| First Workout | Complete your first workout session | session_count | 1 |
+| First Steps | Log 10 total reps | total_reps | 10 |
+| Getting Started | Complete 5 workout sessions | session_count | 5 |
+| On a Roll | Complete 10 workout sessions | session_count | 10 |
+| Dedicated | Complete 25 workout sessions | session_count | 25 |
+| Unstoppable | Complete 50 workout sessions | session_count | 50 |
+| Century | Log 100 total reps | total_reps | 100 |
+| Rep Machine | Log 500 total reps | total_reps | 500 |
+| Beast Mode | Log 1,000 total reps | total_reps | 1000 |
+| Point Scorer | Earn 1,000 total score | total_score | 1000 |
+| High Achiever | Earn 10,000 total score | total_score | 10000 |
+| Calorie Burner | Burn 500 total calories | total_calories | 500 |
+| Inferno | Burn 2,000 total calories | total_calories | 2000 |
 
 ---
 

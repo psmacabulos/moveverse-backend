@@ -31,7 +31,7 @@ Steps the backend performs:
 4. Sign a JWT containing the new user's id
 5. Respond `201` with `{ token, user }` — user object contains no hash
 
-Status: 🔨 In progress (Phase 7a active) · Stack: routes → controller → `register()` → `createUser()`
+Status: ✅ Delivered — merged to main 2026-06-13
 
 ### US-02 — Log in
 > As a **registered user**, I want to log in with email and password, so that I can access my account from any device.
@@ -42,7 +42,7 @@ Steps:
 3. Wrong email and wrong password return the **same** `401` (no user enumeration)
 4. Success → sign JWT, respond `{ token, user }`
 
-Status: 🔨 In progress (Phase 7a) · Stack: `login()` → `findByEmail()`
+Status: ✅ Delivered — merged to main 2026-06-13
 
 ### US-03 — Stay recognised on every request
 > As a **logged-in user**, I want the app to know who I am on every request, so that everything I do is saved to my account — and nobody else's.
@@ -53,7 +53,7 @@ Steps:
 3. Valid → attach user to `req.user`, continue; invalid/missing → `401`
 4. User identity always comes from the token, **never** from the request body
 
-Status: 🔨 In progress (Phase 7a) · Stack: `auth.middleware.ts` → `findById()`
+Status: ✅ Delivered — merged to main 2026-06-13
 
 ### US-04 — Sign in with Google
 > As a **visitor**, I want to sign up or log in with my Google account, so that I don't have to manage another password.
@@ -77,7 +77,7 @@ Steps:
 1. `GET /v1/exercises` (protected) → join exercises with difficulties, only `is_active = true`
 2. Respond with exercises, difficulties nested inside each
 
-Status: ⏳ Not started (Phase 8)
+Status: ✅ Delivered — merged to main 2026-06-13
 
 ### US-06 — Save a workout
 > As a **logged-in user**, I want my completed workout saved with score and calories calculated for me, so that my effort is recorded fairly and identically for everyone.
@@ -89,14 +89,14 @@ Steps:
 4. Insert session, then check for newly unlocked achievements
 5. Respond with the saved session + `new_achievements`
 
-Status: ⏳ Not started (Phase 9)
+Status: ✅ Delivered — merged to main 2026-06-13
 
 ### US-07 — See my workout history
 > As a **logged-in user**, I want to see my past workouts, so that I can track my progress over time.
 
 Steps: `GET /v1/workout_sessions/me` (protected) → sessions for `req.user` id, newest first
 
-Status: ⏳ Not started (Phase 9)
+Status: ✅ Delivered — merged to main 2026-06-13
 
 ---
 
@@ -107,14 +107,23 @@ Status: ⏳ Not started (Phase 9)
 
 Steps: after each workout save → compare user totals against each achievement's `requirement_type`/`requirement_value` → insert newly crossed ones into `user_achievements` (never twice) → return them in the workout response
 
-Status: ⏳ Not started (Phase 10)
+The 13 achievements in scope, grouped by type:
+
+| requirement_type | Achievements (name → threshold) |
+|---|---|
+| session_count | First Workout (1), Getting Started (5), On a Roll (10), Dedicated (25), Unstoppable (50) |
+| total_reps | First Steps (10), Century (100), Rep Machine (500), Beast Mode (1,000) |
+| total_score | Point Scorer (1,000), High Achiever (10,000) |
+| total_calories | Calorie Burner (500), Inferno (2,000) |
+
+Status: 🔨 Active (Phase 10)
 
 ### US-09 — View my achievements
 > As a **user**, I want to see all badges I've earned, so that I can enjoy my collection and see what's still locked.
 
 Steps: `GET /v1/users/me/achievements` (protected) → user's earned achievements with badge data
 
-Status: ⏳ Not started (Phase 10)
+Status: 🔨 Active (Phase 10)
 
 ---
 
@@ -176,13 +185,13 @@ Status: ⏳ Not started (Phase 13; partial delivery in every phase)
 
 | Epic | Stories | Delivered | In progress | Status |
 |---|---|---|---|---|
-| 1. Identity | US-01–04 | 0 | US-01, 02, 03 | 🔨 Active — Phase 7a |
-| 2. Working Out | US-05–07 | 0 | — | ⏳ |
-| 3. Motivation | US-08–09 | 0 | — | ⏳ |
-| 4. My Profile | US-10–13 | 0 | — | ⏳ |
-| 5. Competition | US-14 | 0 | — | ⏳ |
-| 6. Trust | US-15 | 0 | — | ⏳ |
-| **Total** | **15** | **0 (0%)** | **3 (20%)** | |
+| 1. Identity | US-01–04 | 3 (US-01, 02, 03) | — | ✅ Phase 7a done · US-04 deferred |
+| 2. Working Out | US-05–07 | 3 (US-05, 06, 07) | — | ✅ Phases 8 + 9 done |
+| 3. Motivation | US-08–09 | 0 | US-08, 09 | 🔨 Active — Phase 10 |
+| 4. My Profile | US-10–13 | 0 | — | ⏳ Phase 11 |
+| 5. Competition | US-14 | 0 | — | ⏳ Phase 12 |
+| 6. Trust | US-15 | 0 | — | ⏳ Phase 13 |
+| **Total** | **15** | **6 (40%)** | **2 (13%)** | |
 
 A story counts as **delivered** only when its endpoint works on the live Heroku app — merged to `main`, deployed, testable. Not when the code is written.
 

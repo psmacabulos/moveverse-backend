@@ -297,13 +297,20 @@ This prevents score manipulation — a tampered request body cannot change the s
   "id": "uuid",
   "score": 630,
   "calories_burned": 13.44,
-  "completed_at": "2025-06-01T10:30:00.000Z"
+  "completed_at": "2025-06-01T10:30:00.000Z",
+  "new_achievements": [
+    {
+      "id": "uuid",
+      "name": "First Workout",
+      "description": "Complete your first workout session"
+    }
+  ]
 }
 ```
 
-**Errors:** `400` missing or invalid fields — `404` exercise difficulty not found
+`new_achievements` is always an array — empty `[]` when no new achievements were unlocked. The frontend uses this to show a badge popup after a session.
 
-> After saving, the backend checks whether the user has unlocked any new achievements. This happens automatically — no separate API call is needed from the frontend.
+**Errors:** `400` missing or invalid fields — `404` exercise difficulty not found
 
 ---
 
@@ -415,9 +422,9 @@ This prevents score manipulation — a tampered request body cannot change the s
 [
   {
     "id": "uuid",
-    "name": "First Rep",
+    "name": "First Workout",
     "description": "Complete your first workout session",
-    "badge_image": "https://...",
+    "badge_image": null,
     "unlocked_at": "2025-06-01T10:30:00.000Z"
   }
 ]
