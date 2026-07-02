@@ -58,25 +58,55 @@ const seedExerciseDifficulties = async (): Promise<void> => {
 };
 
 const seedAchievements = async (): Promise<void> => {
-  await pool.query(
-    `INSERT INTO achievements(name, description, requirement_type, requirement_value)
-        VALUES($1, $2, $3, $4)
-        ON CONFLICT (name) DO NOTHING`,
-    ['First Step', 'Complete your first workout', 'session_count', 1]
-  );
-  await pool.query(
-    `INSERT INTO achievements(name, description, requirement_type, requirement_value)
-        VALUES($1, $2, $3, $4)
-        ON CONFLICT (name) DO NOTHING`,
-    ['Getting Started', 'Complete 5 workouts', 'session_count', 5]
-  );
-  await pool.query(
-    `INSERT INTO achievements(name, description, requirement_type, requirement_value)
-        VALUES($1, $2, $3, $4)
-        ON CONFLICT (name) DO NOTHING`,
-    ['Dedicated', 'Complete 10 workouts', 'session_count', 10]
-  );
+  const achievements = [
+    ['First Workout', 'Complete your first workout', 'session_count', 1],
+    ['Getting Started', 'Complete 5 workouts', 'session_count', 5],
+    ['On a Roll', 'Complete 10 workouts', 'session_count', 10],
+    ['Dedicated', 'Complete 25 workouts', 'session_count', 25],
+    ['Unstoppable', 'Complete 50 workouts', 'session_count', 50],
+    ['First Steps', 'Log 10 total reps', 'total_reps', 10],
+    ['Century', 'Log 100 total reps', 'total_reps', 100],
+    ['Rep Machine', 'Log 500 total reps', 'total_reps', 500],
+    ['Beast Mode', 'Log 1,000 total reps', 'total_reps', 1000],
+    ['Warm Up', 'Burn 50 total calories', 'total_calories', 50],
+    ['Calorie Burner', 'Burn 250 total calories', 'total_calories', 250],
+    ['Inferno', 'Burn 1,000 total calories', 'total_calories', 1000],
+  ];
+
+  for (const [name, description, requirement_type, requirement_value] of achievements) {
+    await pool.query(
+      `INSERT INTO achievements (name, description, requirement_type, requirement_value)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (name) DO NOTHING`,
+      [name, description, requirement_type, requirement_value]
+    );
+  }
 };
+
+const seedUserAchievements = async (): Promise<void> => {
+  // 1. look up the admin user id
+  const userResult = await pool.query(`SELECT id FROM users WHERE email = $1`, [
+    process.env.ADMIN_EMAIL,
+  ]);
+  const userId = userResult.rows[0].id;
+
+  // 2. look up the first 3 achievement ids by name
+  const achievementNames = ['First Workout', 'Getting Started', 'On a Roll'];
+  for (const name of achievementNames) {
+    const achResult = await pool.query(`SELECT id FROM achievements WHERE name = $1`, [name]);
+    const achievementId = achResult.rows[0].id;
+
+    // 3. insert — ON CONFLICT skips if already exists (PK is user_id + achievement_id)
+    await pool.query(
+      `INSERT INTO user_achievements (user_id, achievement_id)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [userId, achievementId]
+    );
+  }
+  console.log('User achievements seeded.');
+};
+
 const runSeed = async (): Promise<void> => {
   console.log('Seeding users...');
   await seedUsers();
@@ -89,6 +119,9 @@ const runSeed = async (): Promise<void> => {
 
   console.log('Seeding achievements...');
   await seedAchievements();
+
+  console.log('Seeding user achievements');
+  await seedUserAchievements();
 
   console.log('Seeding finished successfully!');
   await pool.end();

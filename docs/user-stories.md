@@ -11,8 +11,8 @@ Format: *As a [who], I want [what], so that [why].* Each story lists the steps t
 Phases 1–6 (server, Docker, CI/CD, database, seeding) appear nowhere below. That is not an oversight — they are **enablers**: a user never asked for Docker. They make story delivery possible, but deliver no story themselves. This explains the honest progress gap:
 
 ```
-Roadmap phases complete:   6 of 13   (46%)  ← effort spent
-User stories delivered:    0 of 15   ( 0%)  ← value shipped
+Roadmap phases complete:   9 of 13   (69%)  ← effort spent  (Phases 1–9 done; 7b deferred)
+User stories delivered:    6 of 15   (40%)  ← value shipped  (US-01–03, US-05–07 on Heroku)
 ```
 
 Both numbers are true. Infrastructure-first was the right call — but from this point on, every phase ships stories, and this document tracks that.
@@ -31,7 +31,7 @@ Steps the backend performs:
 4. Sign a JWT containing the new user's id
 5. Respond `201` with `{ token, user }` — user object contains no hash
 
-Status: 🔨 In progress (Phase 7a active) · Stack: routes → controller → `register()` → `createUser()`
+Status: ✅ Delivered — merged to `main`, live on Heroku
 
 ### US-02 — Log in
 > As a **registered user**, I want to log in with email and password, so that I can access my account from any device.
@@ -42,7 +42,7 @@ Steps:
 3. Wrong email and wrong password return the **same** `401` (no user enumeration)
 4. Success → sign JWT, respond `{ token, user }`
 
-Status: 🔨 In progress (Phase 7a) · Stack: `login()` → `findByEmail()`
+Status: ✅ Delivered — merged to `main`, live on Heroku
 
 ### US-03 — Stay recognised on every request
 > As a **logged-in user**, I want the app to know who I am on every request, so that everything I do is saved to my account — and nobody else's.
@@ -53,7 +53,7 @@ Steps:
 3. Valid → attach user to `req.user`, continue; invalid/missing → `401`
 4. User identity always comes from the token, **never** from the request body
 
-Status: 🔨 In progress (Phase 7a) · Stack: `auth.middleware.ts` → `findById()`
+Status: ✅ Delivered — merged to `main`, live on Heroku
 
 ### US-04 — Sign in with Google
 > As a **visitor**, I want to sign up or log in with my Google account, so that I don't have to manage another password.
@@ -64,7 +64,7 @@ Steps:
 3. Existing `google_id` → log them in; new → create user (no password — schema allows `password_hash NULL`)
 4. Respond with a normal Altus JWT — downstream code never knows the difference
 
-Status: ⏳ Not started (Phase 7b)
+Status: ⏸ Deferred — Phase 7b skipped for now
 
 ---
 
@@ -77,7 +77,7 @@ Steps:
 1. `GET /v1/exercises` (protected) → join exercises with difficulties, only `is_active = true`
 2. Respond with exercises, difficulties nested inside each
 
-Status: ⏳ Not started (Phase 8)
+Status: ✅ Delivered — merged to `main`, live on Heroku
 
 ### US-06 — Save a workout
 > As a **logged-in user**, I want my completed workout saved with score and calories calculated for me, so that my effort is recorded fairly and identically for everyone.
@@ -89,32 +89,32 @@ Steps:
 4. Insert session, then check for newly unlocked achievements
 5. Respond with the saved session + `new_achievements`
 
-Status: ⏳ Not started (Phase 9)
+Status: ✅ Delivered — merged to `main`, live on Heroku
 
 ### US-07 — See my workout history
 > As a **logged-in user**, I want to see my past workouts, so that I can track my progress over time.
 
 Steps: `GET /v1/workout_sessions/me` (protected) → sessions for `req.user` id, newest first
 
-Status: ⏳ Not started (Phase 9)
+Status: ✅ Delivered — merged to `main`, live on Heroku
 
 ---
 
-## 🏆 Epic 3 — Motivation (Phase 10 · branch `feature/achievements`)
+## 🏆 Epic 3 — Motivation (Phase 10 · branch `feat/achievements`)
 
 ### US-08 — Earn achievements automatically
 > As a **user**, I want badges to unlock by themselves when I hit milestones, so that I feel rewarded without doing anything extra.
 
 Steps: after each workout save → compare user totals against each achievement's `requirement_type`/`requirement_value` → insert newly crossed ones into `user_achievements` (never twice) → return them in the workout response
 
-Status: ⏳ Not started (Phase 10)
+Status: 🔨 Active — Phase 10, branch `feat/achievements`
 
 ### US-09 — View my achievements
 > As a **user**, I want to see all badges I've earned, so that I can enjoy my collection and see what's still locked.
 
 Steps: `GET /v1/users/me/achievements` (protected) → user's earned achievements with badge data
 
-Status: ⏳ Not started (Phase 10)
+Status: 🔨 Active — Phase 10, branch `feat/achievements`
 
 ---
 
@@ -176,13 +176,13 @@ Status: ⏳ Not started (Phase 13; partial delivery in every phase)
 
 | Epic | Stories | Delivered | In progress | Status |
 |---|---|---|---|---|
-| 1. Identity | US-01–04 | 0 | US-01, 02, 03 | 🔨 Active — Phase 7a |
-| 2. Working Out | US-05–07 | 0 | — | ⏳ |
-| 3. Motivation | US-08–09 | 0 | — | ⏳ |
+| 1. Identity | US-01–04 | 3 (01, 02, 03) | — | ✅ Done · US-04 deferred |
+| 2. Working Out | US-05–07 | 3 (05, 06, 07) | — | ✅ Done |
+| 3. Motivation | US-08–09 | 0 | US-08, 09 | 🔨 Active — Phase 10 |
 | 4. My Profile | US-10–13 | 0 | — | ⏳ |
 | 5. Competition | US-14 | 0 | — | ⏳ |
 | 6. Trust | US-15 | 0 | — | ⏳ |
-| **Total** | **15** | **0 (0%)** | **3 (20%)** | |
+| **Total** | **15** | **6 (40%)** | **2** | |
 
 A story counts as **delivered** only when its endpoint works on the live Heroku app — merged to `main`, deployed, testable. Not when the code is written.
 
